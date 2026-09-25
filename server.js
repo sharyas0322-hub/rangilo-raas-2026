@@ -12,9 +12,9 @@ const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, 'data');
 const TICKETS_FILE = path.join(DATA_DIR, 'tickets.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'event-config.json');
-const PUBLIC_DIR = path.join(__dirname, '..', 'public');
-const SCANNER_DIR = path.join(__dirname, '..', 'scanner');
-const ADMIN_DIR = path.join(__dirname, '..', 'admin');
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const SCANNER_DIR = path.join(__dirname, 'scanner');
+const ADMIN_DIR = path.join(__dirname, 'admin');
 const TZ = 'Asia/Kolkata';
 
 const PRICES = {
