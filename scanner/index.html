@@ -1,0 +1,58 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rangilo Raas - Gate Scanner</title>
+<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#080c20;color:#fff;padding:18px}.wrap{max-width:600px;margin:auto}.box{background:#111735;border-radius:18px;padding:18px;box-shadow:0 10px 40px #0005}.state{padding:13px;border-radius:12px;background:#ffffff10;margin:12px 0;line-height:1.5}.active{background:#0b6b3a}.inactive{background:#6d5200}.ok{background:#0b6b3a}.bad{background:#7b1e2b}.warn{background:#6d5200}.small{opacity:.85;font-size:13px;line-height:1.45}input,button{width:100%;padding:12px;margin-top:10px;border-radius:9px;border:0;font-size:16px}input{background:#070b1d;color:#fff;border:1px solid #ffffff22}button{background:#ffd333;color:#111;font-weight:bold;cursor:pointer}.divider{display:flex;align-items:center;gap:10px;margin:18px 0;color:#aaa}.divider:before,.divider:after{content:"";height:1px;background:#ffffff22;flex:1}.manual{padding:14px;background:#ffffff08;border-radius:12px}.history{margin-top:14px;border-top:1px solid #ffffff22;padding-top:12px}.history div{padding:8px 0;border-bottom:1px solid #ffffff12;font-size:13px}#reader{margin-top:12px;overflow:hidden;border-radius:12px} .camera-note{margin-top:8px;font-size:12px;color:#bbb}.testbox{display:none;margin-top:12px;padding:12px;border:1px dashed #ffd33355;border-radius:12px;background:#ffd33308}.testbox button{background:#6ee7b7}.testbox.off button{background:#ffd333}</style>
+<script src="https://unpkg.com/html5-qrcode" defer></script></head><body><div class="wrap"><div class="box"><h2>🎟️ Rangilo Raas Gate Scanner</h2><div id="releaseState" class="state">Checking scanner status...</div><p class="small"><b>Camera is the primary method.</b> Point the gate phone camera at the customer's QR. If camera access is unavailable, use the Ticket ID verification below.</p><label>Staff name</label><input id="staff" placeholder="Staff name" value="Gate Staff">
+<div id="reader"></div><div id="cameraStatus" class="camera-note">Starting camera…</div>
+<div id="localTestBox" class="testbox">
+  <b>🧪 LOCAL TEST SCAN MODE</b>
+  <div id="localTestStatus" class="small" style="margin-top:5px">Checking…</div>
+  <button id="localTestBtn">Enable Test Scan Mode</button>
+  <div class="small" style="margin-top:6px">Testing only on this computer. Production/event-date validation remains unchanged.</div>
+</div>
+<div class="divider">OR</div>
+<div class="manual"><b>🔎 Ticket ID Verification (Camera Backup)</b><div class="small" style="margin-top:6px">Use only when the QR camera cannot be used. Enter the exact Ticket ID printed on the customer's ticket.</div><input id="manualTicketId" autocomplete="off" autocapitalize="characters" placeholder="e.g. RR26-XXXXXXXX-XXXXXX"><button id="manualBtn">VERIFY TICKET ID</button></div>
+<div class="divider">QR IMAGE BACKUP</div><label class="small">If camera is unavailable, choose a saved QR image:</label><input id="qrFile" type="file" accept="image/*"><div id="result"></div></div></div>
+<script>
+window.addEventListener('load',async()=>{
+ const result=document.getElementById('result'),state=document.getElementById('releaseState'),cameraStatus=document.getElementById('cameraStatus');let qr=null,busy=false,active=false;
+ const localTestBox=document.getElementById('localTestBox'),localTestStatus=document.getElementById('localTestStatus'),localTestBtn=document.getElementById('localTestBtn');
+ async function refreshLocalTestMode(){
+   if(!['localhost','127.0.0.1','::1'].includes(location.hostname)) return;
+   localTestBox.style.display='block';
+   try{
+     const r=await fetch('/api/local-test-scan-mode'); const j=await r.json();
+     const on=j.testScanMode===true;
+     localTestBox.classList.toggle('off',!on);
+     localTestStatus.textContent=on?'🟢 ON — event-date check is bypassed for local testing.':'⚪ OFF — normal event-date validation is active.';
+     localTestBtn.textContent=on?'Disable Test Scan Mode':'Enable Test Scan Mode';
+   }catch(e){localTestStatus.textContent='Could not read local test mode.'}
+ }
+ localTestBtn.addEventListener('click',async()=>{
+   localTestBtn.disabled=true;
+   try{
+     const current=await fetch('/api/local-test-scan-mode').then(r=>r.json());
+     const r=await fetch('/api/local-test-scan-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!current.testScanMode})});
+     const j=await r.json();
+     if(!r.ok) throw new Error(j.error||'Could not change test mode');
+     await refreshLocalTestMode();
+   }catch(e){show('bad','TEST MODE ERROR',e.message||'Could not change test mode.')}
+   finally{localTestBtn.disabled=false}
+ });
+ refreshLocalTestMode();
+ function india(iso){if(!iso)return '-';return new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'medium'}).format(new Date(iso))}
+ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+ function show(cls,title,msg,t){let h='';if(t){const hist=t.scanHistory||[];h='<div class="history"><b>Scan History</b>'+hist.slice().reverse().map(x=>'<div>'+india(x.at)+' — '+esc(x.result)+' — '+esc(x.staff)+'</div>').join('')+'</div>'}result.className='state '+cls;result.innerHTML='<b>'+title+'</b><br>'+msg+h;result.scrollIntoView({behavior:'smooth',block:'nearest'})}
+ function ticketHtml(j){return '<br><b>Ticket:</b> '+esc(j.ticket.ticketId)+'<br><b>Name:</b> '+esc(j.ticket.name)+'<br><b>Pass:</b> '+esc(j.ticket.type)+'<br><b>Entry time:</b> '+india(j.ticket.scannedAt)}
+ function processResponse(j){
+   if(j.status==='VALID') show('ok','VALID ENTRY ✓',j.message+ticketHtml(j),j.ticket);
+   else if(j.status==='ALREADY_USED') show('warn','ALREADY SCANNED ⚠',j.message+'<br><b>First entry:</b> '+india(j.ticket.scannedAt)+'<br><b>This scan:</b> '+india((j.ticket.scanHistory||[]).at(-1)?.at),j.ticket);
+   else if(j.status==='INVALID_DATE') show('bad','WRONG DATE ✕',j.message,j.ticket);
+   else show('bad','INVALID ✕',j.message||'Invalid ticket',j.ticket);
+ }
+ async function submitQrText(text){if(busy)return;busy=true;try{const data=JSON.parse(text);if(!data.ticketId||!data.sig)throw new Error('Invalid QR');const r=await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:data.ticketId,sig:data.sig,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','INVALID ✕','QR is not a valid Rangilo Raas ticket.')}finally{setTimeout(()=>busy=false,1200)}}
+ async function manualVerify(){if(busy)return;const ticketId=document.getElementById('manualTicketId').value.trim();if(!ticketId){show('bad','TICKET ID REQUIRED','Enter the Ticket ID printed on the ticket.');return}busy=true;try{const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','SERVER ERROR','Could not verify Ticket ID. Check the server connection.')}finally{busy=false}}
+ document.getElementById('manualBtn').addEventListener('click',manualVerify);document.getElementById('manualTicketId').addEventListener('keydown',e=>{if(e.key==='Enter')manualVerify()});
+ function start(){if(!window.Html5Qrcode){cameraStatus.textContent='Camera library is still loading…';setTimeout(start,500);return}try{qr=new Html5Qrcode('reader');qr.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:250}},submitQrText).then(()=>{cameraStatus.textContent='📷 Camera active — point it at the QR code.'}).catch(e=>{cameraStatus.textContent='⚠️ Camera unavailable: '+(e?.message||String(e)||'unknown camera error')+'. Use Ticket ID Verification below.'})}catch(e){cameraStatus.textContent='⚠️ Camera unavailable: '+(e?.message||String(e)||'unknown camera error')+'. Use Ticket ID Verification below.'}}
+ document.getElementById('qrFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f||!window.Html5Qrcode)return;try{busy=true;const reader=new Html5Qrcode('reader');const text=await reader.scanFile(f,true);await reader.clear();await submitQrText(text)}catch(err){show('bad','QR IMAGE ERROR',err.message||'Could not read QR image.')}finally{busy=false;e.target.value=''}});
+ try{const r=await fetch('/api/config');const c=await r.json();active=true;state.className='state active';state.innerHTML='🟢 <b>SCANNER ACTIVE</b><br>Venue: '+esc(c.venueName)+'<br>🚪 Gate No. 1 — Main Entry';start()}catch(e){state.className='state bad';state.textContent='Could not connect to server.';cameraStatus.textContent='Server connection unavailable.'}
+});
+</script></body></html>

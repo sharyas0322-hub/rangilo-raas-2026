@@ -1,0 +1,14 @@
+{
+  "name": "rangilo-raas-razorpay-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rangilo Raas 2026 Razorpay test payment server",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4",
+    "razorpay": "^2.9.6"
+  }
+}

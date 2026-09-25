@@ -1,0 +1,17 @@
+{
+  "eventName": "Rangilo Raas 2026",
+  "eventDates": [
+    "2026-10-16",
+    "2026-10-17"
+  ],
+  "eventTime": "5:00 PM – 11:00 PM",
+  "venueName": "Aashirvadd Banquet Hall",
+  "venueAddress": "Near Gai Ghat, Patna, Bihar",
+  "venueMapsUrl": "https://maps.app.goo.gl/sHiKSQ9gZz1KkJwbA",
+  "ticketReleaseDate": "2026-10-13",
+  "ticketReleaseTime": "00:00",
+  "releaseOverride": true,
+  "lastReleasedAt": "",
+  "instantTicketRelease": true,
+  "testScanMode": true
+}
