@@ -29,7 +29,7 @@ const PRICES = {
 
 const DEFAULT_CONFIG = {
   eventName: 'Rangilo Raas 2026',
-  eventDates: ['2026-10-16', '2026-10-17'],
+  eventDates: ['2026-10-17'],
   eventTime: '5:00 PM – 11:00 PM',
   venueName: 'Aashirvadd Banquet Hall',
   venueAddress: 'Near Gai Ghat, Patna, Bihar',
@@ -47,7 +47,10 @@ if (!fs.existsSync(TICKETS_FILE)) fs.writeFileSync(TICKETS_FILE, '[]');
 if (!fs.existsSync(CONFIG_FILE)) fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
 if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.includes('ChangeThis')) {
-  console.warn('\n[WARNING] Set a strong ADMIN_PASSWORD before going live.\n');
+  console.warn('\n[WARNING] Set ADMIN_PASSWORD in Render Environment before going live.\n');
+}
+if (!process.env.ADMIN_USER) {
+  console.warn('\n[WARNING] ADMIN_USER not set; defaulting to admin.\n');
 }
 if (!process.env.TICKET_SECRET || process.env.TICKET_SECRET.includes('Change_This')) {
   console.warn('\n[WARNING] Set a strong TICKET_SECRET before going live.\n');
@@ -173,7 +176,7 @@ function publicConfig() {
     ticketReleaseTime: config.ticketReleaseTime,
     releaseReady: releaseReady(config),
     ticketReleased: ticketReleased(config),
-    testMode: Number(process.env.TEST_FIXED_AMOUNT_RUPEES || 0) > 0,
+    testMode: false,
     testScanMode: config.testScanMode === true
   };
 }
@@ -181,7 +184,7 @@ function publicConfig() {
 function sessionToken() {
   return crypto
     .createHmac('sha256', process.env.ADMIN_PASSWORD || 'missing-admin')
-    .update('rangilo-raas-admin-session-v1')
+    .update(`rangilo-raas-admin-session-v2:${process.env.ADMIN_USER || 'admin'}`)
     .digest('hex');
 }
 
@@ -277,11 +280,12 @@ function dbTicket(ticket) {
     bookingId: ticket.bookingId || ticket.ticketId,
     event: ticket.event || 'Rangilo Raas 2026',
     eventDate: ticket.eventDate,
-    eventDates: ticket.eventDates || '16–17 October 2026',
+    eventDates: ticket.eventDates || '17 October 2026',
     type: ticket.type,
     qty: Number(ticket.qty),
     people: Number(ticket.people),
     amountRupees: Number(ticket.amountRupees),
+    receivedAmountRupees: ticket.receivedAmountRupees ?? ticket.received_amount_rupees ?? null,
     name: ticket.name,
     mobile: ticket.mobile,
     paymentId: ticket.paymentId || null,
@@ -315,6 +319,7 @@ function normalizeTicket(row) {
     qty: Number(row.qty),
     people: Number(row.people),
     amountRupees: Number(row.amountRupees),
+    receivedAmountRupees: row.receivedAmountRupees ?? row.received_amount_rupees ?? null,
     used: Boolean(row.used),
     scanHistory: Array.isArray(row.scanHistory) ? row.scanHistory : []
   };
@@ -353,6 +358,20 @@ async function getTicketByPaymentId(paymentId) {
 
   const rows = await supabaseRequest(
     `tickets?paymentId=eq.${encodeURIComponent(paymentId)}&select=*`,
+    { method: 'GET' }
+  );
+  return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
+}
+
+async function getTicketByMobile(mobile) {
+  const clean = String(mobile || '').trim();
+  if (!clean) return null;
+  if (!SUPABASE_ENABLED) {
+    const tickets = readJson(TICKETS_FILE, []);
+    return tickets.find(t => String(t.mobile || '').trim() === clean) || null;
+  }
+  const rows = await supabaseRequest(
+    `tickets?mobile=eq.${encodeURIComponent(clean)}&select=*&order=createdAt.desc&limit=1`,
     { method: 'GET' }
   );
   return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
@@ -414,6 +433,25 @@ async function updateTicket(ticketId, patch) {
   );
 
   return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
+}
+
+async function deleteTicketById(ticketId) {
+  const clean = String(ticketId || '').trim().toUpperCase();
+  if (!clean) return false;
+
+  if (!SUPABASE_ENABLED) {
+    const tickets = readJson(TICKETS_FILE, []);
+    const next = tickets.filter(t => String(t.ticketId || '').toUpperCase() !== clean);
+    if (next.length === tickets.length) return false;
+    writeJson(TICKETS_FILE, next);
+    return true;
+  }
+
+  await supabaseRequest(
+    `tickets?ticketId=eq.${encodeURIComponent(clean)}`,
+    { method: 'DELETE' }
+  );
+  return true;
 }
 
 async function markTicketUsed(ticketId, scanTime, staff, result) {
@@ -549,8 +587,14 @@ app.post('/api/create-booking', async (req, res) => {
       return res.status(400).json({ error: 'Please select a valid event date.' });
     }
 
-    const fixed = Number(process.env.TEST_FIXED_AMOUNT_RUPEES || 0);
-    const amountRupees = fixed > 0 ? fixed : PRICES[type] * qty;
+    const existing = await getTicketByMobile(mobile);
+    if (existing) {
+      return res.status(409).json({
+        error: `This mobile number already has a booking. Booking ID: ${existing.ticketId}. Please use MY TICKET.`
+      });
+    }
+
+    const amountRupees = PRICES[type] * qty;
     const ticketId = getTicketId();
 
     const ticket = {
@@ -558,11 +602,12 @@ app.post('/api/create-booking', async (req, res) => {
       bookingId: ticketId,
       event: 'Rangilo Raas 2026',
       eventDate,
-      eventDates: '16–17 October 2026',
+      eventDates: '17 October 2026',
       type,
       qty,
       people: getPeople(type, qty),
       amountRupees,
+      receivedAmountRupees: null,
       name,
       mobile,
       paymentId: null,
@@ -658,10 +703,14 @@ app.get('/api/admin/pending-payments', requireAdmin, async (req, res) => {
 app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
   try {
     const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
+    const receivedAmount = Number(req.body.receivedAmountRupees);
     const ticket = await getTicketById(ticketId);
 
     if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
     if (!ticket.utr) return res.status(400).json({ error: 'UTR has not been submitted.' });
+    if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) {
+      return res.status(400).json({ error: 'Enter the actual amount received before VERIFY.' });
+    }
 
     const duplicate = await getTicketByUtr(ticket.utr);
     if (duplicate && duplicate.ticketId !== ticketId) {
@@ -669,6 +718,7 @@ app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
     }
 
     const updated = await updateTicket(ticketId, {
+      received_amount_rupees: receivedAmount,
       payment_status: 'VERIFIED',
       payment_verified_at: isoNow(),
       payment_rejected_at: null,
@@ -703,6 +753,45 @@ app.post('/api/admin/reject-payment', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('reject-payment admin error:', err);
     res.status(500).json({ error: 'Could not reject payment.' });
+  }
+});
+
+app.post('/api/admin/cancel-booking/:ticketId', requireAdmin, async (req, res) => {
+  try {
+    const ticketId = String(req.params.ticketId || '').trim().toUpperCase();
+    const ticket = await getTicketById(ticketId);
+
+    if (!ticket) return res.status(404).json({ error: 'Booking not found.' });
+
+    // Cancel means remove the booking completely from the active ticket records.
+    // This also removes its mobile/UTR/QR/payment record so the mobile can book again.
+    const ok = await deleteTicketById(ticketId);
+    if (!ok) return res.status(404).json({ error: 'Booking not found.' });
+
+    res.json({
+      success: true,
+      cancelledTicketId: ticketId,
+      message: 'Booking cancelled and all booking details removed.'
+    });
+  } catch (err) {
+    console.error('admin cancel booking error:', err);
+    res.status(500).json({ error: 'Could not cancel booking.' });
+  }
+});
+
+app.delete('/api/admin/ticket/:ticketId', requireAdmin, async (req, res) => {
+  try {
+    const ticketId = String(req.params.ticketId || '').trim().toUpperCase();
+    const ticket = await getTicketById(ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+
+    const ok = await deleteTicketById(ticketId);
+    if (!ok) return res.status(404).json({ error: 'Ticket not found.' });
+
+    res.json({ success: true, deletedTicketId: ticketId });
+  } catch (err) {
+    console.error('admin delete ticket error:', err);
+    res.status(500).json({ error: 'Could not delete ticket.' });
   }
 });
 
@@ -1028,12 +1117,15 @@ app.get('/api/admin/me', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/login', (req, res) => {
+  const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
+  const expectedUser = process.env.ADMIN_USER || 'admin';
 
   if (!process.env.ADMIN_PASSWORD ||
+      !safeCompare(username, expectedUser) ||
       !safeCompare(password, process.env.ADMIN_PASSWORD)) {
     return res.status(401).json({
-      error: 'Invalid admin password.'
+      error: 'Invalid admin user ID or password.'
     });
   }
 
@@ -1070,13 +1162,19 @@ app.get('/api/admin/tickets', requireAdmin, async (req, res) => {
       0
     );
 
+    const verifiedTickets = tickets.filter(t => t.paymentStatus === 'VERIFIED');
+    const pendingUtr = tickets.filter(t => t.paymentStatus === 'PENDING' && t.utr).length;
+    const receivedTotal = verifiedTickets.reduce((sum, t) => sum + (Number(t.receivedAmountRupees) || 0), 0);
     const used = tickets.filter(t => t.used).length;
 
     res.json({
       tickets,
       config: publicConfig(),
       summary: {
-        paid: tickets.filter(t => t.paymentStatus === 'VERIFIED').length,
+        paid: verifiedTickets.length,
+        verifiedCount: verifiedTickets.length,
+        receivedTotal: Math.round(receivedTotal * 100) / 100,
+        pendingUtr,
         used,
         unused: tickets.length - used,
         scanAttempts: scans
@@ -1087,6 +1185,26 @@ app.get('/api/admin/tickets', requireAdmin, async (req, res) => {
     res.status(500).json({
       error: 'Could not load bookings.'
     });
+  }
+});
+
+app.get('/api/admin/ticket/:ticketId', requireAdmin, async (req, res) => {
+  try {
+    const ticket = await getTicketById(req.params.ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+
+    const safeTicket = { ...ticket };
+    delete safeTicket.signature;
+
+    let qrDataUrl = null;
+    if (ticket.paymentStatus === 'VERIFIED' && ticket.status === 'CONFIRMED') {
+      qrDataUrl = await awaitQr(ticket);
+    }
+
+    res.json({ ticket: safeTicket, qrDataUrl, config: publicConfig() });
+  } catch (err) {
+    console.error('admin ticket view error:', err);
+    res.status(500).json({ error: 'Could not load ticket.' });
   }
 });
 
@@ -1103,6 +1221,7 @@ app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
       'Qty',
       'People',
       'Amount',
+      'Received Amount',
       'UTR',
       'Payment Status',
       'Payment Submitted At',
@@ -1124,6 +1243,7 @@ app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
         t.qty,
         t.people,
         t.amountRupees,
+        t.receivedAmountRupees ?? '',
         t.utr || '',
         t.paymentStatus || 'PENDING',
         formatIndia(t.paymentSubmittedAt),
