@@ -988,6 +988,16 @@ app.post('/api/manual-scan', async (req, res) => {
       });
     }
 
+    // First scan only verifies the ticket. Entry is committed only after
+    // the staff explicitly presses ALLOW ENTRY.
+    if (req.body.approveEntry !== true) {
+      return res.json({
+        status: 'VALID',
+        message: 'Ticket verified. Customer details checked. Press ALLOW ENTRY to confirm entry.',
+        ticket
+      });
+    }
+
     const result = await markTicketUsed(
       ticketId, scanTime, staff, 'VALID_MANUAL'
     );
@@ -1118,6 +1128,16 @@ app.post('/api/scan', async (req, res) => {
         status: 'INVALID_DATE',
         message: `Ticket is valid only for ${ticket.eventDate}. Today is ${todayIndia()}.`,
         ticket: updated || ticket
+      });
+    }
+
+    // First QR scan only verifies the ticket. Entry is committed only after
+    // the staff explicitly presses ALLOW ENTRY.
+    if (req.body.approveEntry !== true) {
+      return res.json({
+        status: 'VALID',
+        message: 'Ticket verified. Customer details checked. Press ALLOW ENTRY to confirm entry.',
+        ticket
       });
     }
 
