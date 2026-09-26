@@ -922,35 +922,13 @@ app.post('/api/manual-scan', async (req, res) => {
 
     const config = publicConfig();
 
-    if (ticket.paymentStatus !== 'VERIFIED') {
+    if (ticket.paymentStatus !== 'VERIFIED' || ticket.status !== 'CONFIRMED') {
       const updated = await recordScanAttempt(
         ticketId, scanTime, staff, 'PAYMENT_NOT_VERIFIED_MANUAL'
       );
       return res.json({
         status: 'INVALID',
         message: 'Payment is not verified yet. Entry not allowed.',
-        ticket: updated || ticket
-      });
-    }
-
-    if (ticket.status === 'USED') {
-      const updated = await recordScanAttempt(
-        ticketId, scanTime, staff, 'ALREADY_USED_MANUAL'
-      );
-      return res.json({
-        status: 'ALREADY_USED',
-        message: 'ALREADY ENTERED — 2nd entry not allowed.',
-        ticket: updated || ticket
-      });
-    }
-
-    if (ticket.status !== 'CONFIRMED') {
-      const updated = await recordScanAttempt(
-        ticketId, scanTime, staff, 'TICKET_NOT_ACTIVE_MANUAL'
-      );
-      return res.json({
-        status: 'INVALID',
-        message: 'Ticket is not active for entry.',
         ticket: updated || ticket
       });
     }
@@ -1055,35 +1033,13 @@ app.post('/api/scan', async (req, res) => {
     const config = publicConfig();
     const scanTime = isoNow();
 
-    if (ticket.paymentStatus !== 'VERIFIED') {
+    if (ticket.paymentStatus !== 'VERIFIED' || ticket.status !== 'CONFIRMED') {
       const updated = await recordScanAttempt(
         ticketId, scanTime, staff, 'PAYMENT_NOT_VERIFIED'
       );
       return res.json({
         status: 'INVALID',
         message: 'Payment is not verified yet. Entry not allowed.',
-        ticket: updated || ticket
-      });
-    }
-
-    if (ticket.status === 'USED') {
-      const updated = await recordScanAttempt(
-        ticketId, scanTime, staff, 'ALREADY_USED'
-      );
-      return res.json({
-        status: 'ALREADY_USED',
-        message: 'ALREADY ENTERED — 2nd entry not allowed.',
-        ticket: updated || ticket
-      });
-    }
-
-    if (ticket.status !== 'CONFIRMED') {
-      const updated = await recordScanAttempt(
-        ticketId, scanTime, staff, 'TICKET_NOT_ACTIVE'
-      );
-      return res.json({
-        status: 'INVALID',
-        message: 'Ticket is not active for entry.',
         ticket: updated || ticket
       });
     }
@@ -1244,10 +1200,7 @@ app.get('/api/admin/ticket/:ticketId', requireAdmin, async (req, res) => {
     delete safeTicket.signature;
 
     let qrDataUrl = null;
-    if (
-      ticket.paymentStatus === 'VERIFIED' &&
-      ['CONFIRMED', 'USED'].includes(ticket.status)
-    ) {
+    if (ticket.paymentStatus === 'VERIFIED' && ticket.status === 'CONFIRMED') {
       qrDataUrl = await awaitQr(ticket);
     }
 
