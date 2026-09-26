@@ -285,7 +285,7 @@ function dbTicket(ticket) {
     qty: Number(ticket.qty),
     people: Number(ticket.people),
     amountRupees: Number(ticket.amountRupees),
-    receivedAmountRupees: ticket.receivedAmountRupees ?? ticket.received_amount_rupees ?? null,
+    received_amount_rupees: ticket.receivedAmountRupees ?? ticket.received_amount_rupees ?? null,
     name: ticket.name,
     mobile: ticket.mobile,
     paymentId: ticket.paymentId || null,
