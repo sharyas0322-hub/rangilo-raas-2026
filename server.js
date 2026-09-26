@@ -4,7 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
-const Razorpay = require('razorpay');
 const QRCode = require('qrcode');
 
 const app = express();
@@ -18,6 +17,8 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const SCANNER_DIR = path.join(__dirname, 'scanner');
 const ADMIN_DIR = path.join(__dirname, 'admin');
 const TZ = 'Asia/Kolkata';
+const BHARATPE_QR_FILE = path.join(PUBLIC_DIR, 'bharatpe-qr.jpg');
+const BHARATPE_UPI_NAME = 'MOTI DEVI';
 
 const PRICES = {
   'NORMAL SINGLE': 299,
@@ -45,9 +46,6 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(TICKETS_FILE)) fs.writeFileSync(TICKETS_FILE, '[]');
 if (!fs.existsSync(CONFIG_FILE)) fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
-if (!process.env.RZP_KEY_ID || !process.env.RZP_KEY_SECRET || process.env.RZP_KEY_ID.includes('REPLACE_WITH')) {
-  console.warn('\n[WARNING] Add Razorpay credentials in server/.env before payments.\n');
-}
 if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.includes('ChangeThis')) {
   console.warn('\n[WARNING] Set a strong ADMIN_PASSWORD before going live.\n');
 }
@@ -65,10 +63,6 @@ if (SUPABASE_ENABLED) {
   console.warn('[DATABASE] Supabase environment variables are missing. Local JSON storage will be used.');
 }
 
-const razorpay = new Razorpay({
-  key_id: process.env.RZP_KEY_ID || '',
-  key_secret: process.env.RZP_KEY_SECRET || ''
-});
 
 function readJson(file, fallback) {
   try {
@@ -290,9 +284,15 @@ function dbTicket(ticket) {
     amountRupees: Number(ticket.amountRupees),
     name: ticket.name,
     mobile: ticket.mobile,
-    paymentId: ticket.paymentId,
-    orderId: ticket.orderId,
-    status: ticket.status || 'CONFIRMED',
+    paymentId: ticket.paymentId || null,
+    orderId: ticket.orderId || null,
+    utr: ticket.utr || null,
+    payment_status: ticket.paymentStatus || ticket.payment_status || 'PENDING',
+    payment_submitted_at: ticket.paymentSubmittedAt || ticket.payment_submitted_at || null,
+    payment_verified_at: ticket.paymentVerifiedAt || ticket.payment_verified_at || null,
+    payment_rejected_at: ticket.paymentRejectedAt || ticket.payment_rejected_at || null,
+    payment_rejection_reason: ticket.paymentRejectionReason || ticket.payment_rejection_reason || null,
+    status: ticket.status || 'PENDING_PAYMENT',
     used: Boolean(ticket.used),
     createdAt: ticket.createdAt || isoNow(),
     scannedAt: ticket.scannedAt || null,
@@ -306,6 +306,12 @@ function normalizeTicket(row) {
   if (!row) return null;
   return {
     ...row,
+    paymentStatus: row.paymentStatus || row.payment_status ||
+      (String(row.status || '').toUpperCase() === 'CONFIRMED' || String(row.status || '').toUpperCase() === 'USED' ? 'VERIFIED' : 'PENDING'),
+    paymentSubmittedAt: row.paymentSubmittedAt || row.payment_submitted_at || null,
+    paymentVerifiedAt: row.paymentVerifiedAt || row.payment_verified_at || null,
+    paymentRejectedAt: row.paymentRejectedAt || row.payment_rejected_at || null,
+    paymentRejectionReason: row.paymentRejectionReason || row.payment_rejection_reason || null,
     qty: Number(row.qty),
     people: Number(row.people),
     amountRupees: Number(row.amountRupees),
@@ -347,6 +353,23 @@ async function getTicketByPaymentId(paymentId) {
 
   const rows = await supabaseRequest(
     `tickets?paymentId=eq.${encodeURIComponent(paymentId)}&select=*`,
+    { method: 'GET' }
+  );
+  return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
+}
+
+async function getTicketByUtr(utr) {
+  const clean = String(utr || '').trim();
+  if (!clean) return null;
+
+  if (!SUPABASE_ENABLED) {
+    return readJson(TICKETS_FILE, []).find(
+      t => String(t.utr || '').trim().toUpperCase() === clean.toUpperCase()
+    ) || null;
+  }
+
+  const rows = await supabaseRequest(
+    `tickets?utr=eq.${encodeURIComponent(clean)}&select=*`,
     { method: 'GET' }
   );
   return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
@@ -501,7 +524,14 @@ app.get('/api/local-test-scan-mode', (req, res) => {
   });
 });
 
-app.post('/api/create-order', async (req, res) => {
+app.get('/api/payment-qr', (req, res) => {
+  if (!fs.existsSync(BHARATPE_QR_FILE)) {
+    return res.status(404).send('BharatPe QR not configured.');
+  }
+  res.sendFile(BHARATPE_QR_FILE);
+});
+
+app.post('/api/create-booking', async (req, res) => {
   try {
     const type = cleanType(req.body.type);
     const qty = Number(req.body.qty);
@@ -509,129 +539,18 @@ app.post('/api/create-order', async (req, res) => {
     const mobile = String(req.body.mobile || '').trim();
     const eventDate = String(req.body.eventDate || '').trim();
 
-    if (!PRICES[type]) {
-      return res.status(400).json({ error: 'Invalid pass type.' });
-    }
-    if (![1, 2].includes(qty)) {
-      return res.status(400).json({ error: 'Quantity must be 1 or 2.' });
-    }
-    if (!name) {
-      return res.status(400).json({ error: 'Name is required.' });
-    }
+    if (!PRICES[type]) return res.status(400).json({ error: 'Invalid pass type.' });
+    if (![1, 2].includes(qty)) return res.status(400).json({ error: 'Quantity must be 1 or 2.' });
+    if (!name) return res.status(400).json({ error: 'Name is required.' });
     if (!/^[6-9]\d{9}$/.test(mobile)) {
       return res.status(400).json({ error: 'Valid 10-digit mobile number is required.' });
     }
     if (!validEventDate(eventDate)) {
       return res.status(400).json({ error: 'Please select a valid event date.' });
     }
-    if (!process.env.RZP_KEY_ID || !process.env.RZP_KEY_SECRET ||
-        process.env.RZP_KEY_ID.includes('REPLACE_WITH')) {
-      return res.status(500).json({
-        error: 'Razorpay credentials are missing in server environment.'
-      });
-    }
 
     const fixed = Number(process.env.TEST_FIXED_AMOUNT_RUPEES || 0);
     const amountRupees = fixed > 0 ? fixed : PRICES[type] * qty;
-
-    const order = await razorpay.orders.create({
-      amount: Math.round(amountRupees * 100),
-      currency: 'INR',
-      receipt: 'RR26-' + Date.now().toString(36).toUpperCase(),
-      notes: {
-        event: 'Rangilo Raas 2026',
-        type,
-        qty: String(qty),
-        name,
-        mobile,
-        eventDate
-      }
-    });
-
-    res.json({
-      keyId: process.env.RZP_KEY_ID,
-      orderId: order.id,
-      amount: order.amount,
-      amountRupees,
-      type,
-      qty,
-      people: getPeople(type, qty),
-      name,
-      mobile,
-      eventDate
-    });
-  } catch (err) {
-    console.error('create-order error:', err);
-    res.status(500).json({
-      error: err?.error?.description || err.message || 'Could not create Razorpay order.'
-    });
-  }
-});
-
-app.post('/api/verify-payment', async (req, res) => {
-  try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature
-    } = req.body;
-
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.status(400).json({ error: 'Missing Razorpay payment details.' });
-    }
-
-    const expected = crypto
-      .createHmac('sha256', process.env.RZP_KEY_SECRET || '')
-      .update(razorpay_order_id + '|' + razorpay_payment_id)
-      .digest('hex');
-
-    if (!safeCompare(expected, razorpay_signature)) {
-      return res.status(400).json({ error: 'Payment signature verification failed.' });
-    }
-
-    const order = await razorpay.orders.fetch(razorpay_order_id);
-    const payment = await razorpay.payments.fetch(razorpay_payment_id);
-
-    if (!order || order.id !== razorpay_order_id) {
-      return res.status(400).json({ error: 'Razorpay order could not be verified.' });
-    }
-    if (payment.order_id !== razorpay_order_id) {
-      return res.status(400).json({ error: 'Payment does not belong to this order.' });
-    }
-    if (payment.status !== 'captured') {
-      return res.status(400).json({ error: 'Payment is not captured yet.' });
-    }
-    if (Number(payment.amount) !== Number(order.amount)) {
-      return res.status(400).json({ error: 'Payment amount does not match the order.' });
-    }
-
-    const existing = await getTicketByPaymentId(razorpay_payment_id);
-
-    if (existing) {
-      return res.json({
-        success: true,
-        ticket: existing,
-        qrDataUrl: ticketReleased(readConfig()) ? awaitQr(existing) : null,
-        config: publicConfig()
-      });
-    }
-
-    const notes = order.notes || {};
-    const clean = cleanType(notes.type);
-    const q = Number(notes.qty);
-    const eventDate = String(notes.eventDate || '');
-    const name = String(notes.name || '').trim();
-    const mobile = String(notes.mobile || '').trim();
-
-    if (!PRICES[clean] || ![1, 2].includes(q) ||
-        !validEventDate(eventDate) || !name ||
-        !/^[6-9]\d{9}$/.test(mobile)) {
-      return res.status(400).json({ error: 'Order details are invalid.' });
-    }
-
-    const fixed = Number(process.env.TEST_FIXED_AMOUNT_RUPEES || 0);
-    const amountRupees = fixed > 0 ? fixed : PRICES[clean] * q;
-    const people = getPeople(clean, q);
     const ticketId = getTicketId();
 
     const ticket = {
@@ -640,15 +559,21 @@ app.post('/api/verify-payment', async (req, res) => {
       event: 'Rangilo Raas 2026',
       eventDate,
       eventDates: '16–17 October 2026',
-      type: clean,
-      qty: q,
-      people,
+      type,
+      qty,
+      people: getPeople(type, qty),
       amountRupees,
       name,
       mobile,
-      paymentId: razorpay_payment_id,
-      orderId: razorpay_order_id,
-      status: 'CONFIRMED',
+      paymentId: null,
+      orderId: null,
+      utr: null,
+      paymentStatus: 'PENDING',
+      paymentSubmittedAt: null,
+      paymentVerifiedAt: null,
+      paymentRejectedAt: null,
+      paymentRejectionReason: null,
+      status: 'PENDING_PAYMENT',
       used: false,
       createdAt: isoNow(),
       scannedAt: null,
@@ -657,34 +582,127 @@ app.post('/api/verify-payment', async (req, res) => {
       signature: signTicket(ticketId)
     };
 
-    let savedTicket;
-
-    try {
-      savedTicket = await insertTicket(ticket);
-    } catch (saveErr) {
-      // Payment ID is UNIQUE in Supabase. If a duplicate request arrives,
-      // return the already-created ticket instead of creating another one.
-      const duplicate = await getTicketByPaymentId(razorpay_payment_id);
-      if (duplicate) {
-        savedTicket = duplicate;
-      } else {
-        throw saveErr;
-      }
-    }
-
-    const config = publicConfig();
+    const saved = await insertTicket(ticket);
 
     res.json({
       success: true,
-      ticket: savedTicket,
-      qrDataUrl: config.ticketReleased ? awaitQr(savedTicket) : null,
-      config
+      ticket: saved,
+      amountRupees,
+      people: ticket.people,
+      upiName: BHARATPE_UPI_NAME,
+      qrUrl: '/api/payment-qr'
     });
   } catch (err) {
-    console.error('verify-payment error:', err);
-    res.status(500).json({
-      error: 'Could not verify payment.'
+    console.error('create-booking error:', err);
+    res.status(500).json({ error: 'Could not create booking.' });
+  }
+});
+
+app.post('/api/submit-utr', async (req, res) => {
+  try {
+    const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
+    const mobile = String(req.body.mobile || '').trim();
+    const utr = String(req.body.utr || '').trim();
+
+    if (!ticketId || !/^[6-9]\d{9}$/.test(mobile)) {
+      return res.status(400).json({ error: 'Booking ID and valid mobile are required.' });
+    }
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(utr)) {
+      return res.status(400).json({ error: 'Enter a valid UTR / transaction reference.' });
+    }
+
+    const ticket = await getTicketById(ticketId);
+    if (!ticket || ticket.mobile !== mobile) {
+      return res.status(404).json({ error: 'Booking not found.' });
+    }
+
+    if (ticket.paymentStatus === 'VERIFIED' && ticket.status === 'CONFIRMED') {
+      return res.json({ success: true, status: 'CONFIRMED', ticket });
+    }
+
+    const duplicate = await getTicketByUtr(utr);
+    if (duplicate && duplicate.ticketId !== ticketId) {
+      return res.status(409).json({ error: 'This UTR has already been submitted for another booking.' });
+    }
+
+    const updated = await updateTicket(ticketId, {
+      utr,
+      payment_status: 'PENDING',
+      payment_submitted_at: isoNow(),
+      payment_verified_at: null,
+      payment_rejected_at: null,
+      payment_rejection_reason: null,
+      status: 'PENDING_PAYMENT'
     });
+
+    res.json({ success: true, status: 'PENDING', ticket: updated });
+  } catch (err) {
+    console.error('submit-utr error:', err);
+    res.status(500).json({ error: 'Could not submit UTR.' });
+  }
+});
+
+app.get('/api/admin/pending-payments', requireAdmin, async (req, res) => {
+  try {
+    const tickets = await getAllTickets();
+    res.json({
+      tickets: tickets.filter(t => t.paymentStatus === 'PENDING' && t.utr)
+        .map(t => ({ ...t, signature: undefined }))
+    });
+  } catch (err) {
+    console.error('pending-payments error:', err);
+    res.status(500).json({ error: 'Could not load pending payments.' });
+  }
+});
+
+app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
+  try {
+    const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
+    const ticket = await getTicketById(ticketId);
+
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (!ticket.utr) return res.status(400).json({ error: 'UTR has not been submitted.' });
+
+    const duplicate = await getTicketByUtr(ticket.utr);
+    if (duplicate && duplicate.ticketId !== ticketId) {
+      return res.status(409).json({ error: 'This UTR belongs to another booking.' });
+    }
+
+    const updated = await updateTicket(ticketId, {
+      payment_status: 'VERIFIED',
+      payment_verified_at: isoNow(),
+      payment_rejected_at: null,
+      payment_rejection_reason: null,
+      status: 'CONFIRMED',
+      used: false
+    });
+
+    res.json({ success: true, ticket: updated });
+  } catch (err) {
+    console.error('verify-payment admin error:', err);
+    res.status(500).json({ error: 'Could not verify payment.' });
+  }
+});
+
+app.post('/api/admin/reject-payment', requireAdmin, async (req, res) => {
+  try {
+    const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
+    const reason = String(req.body.reason || 'Payment could not be verified.').trim().slice(0, 200);
+    const ticket = await getTicketById(ticketId);
+
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+
+    const updated = await updateTicket(ticketId, {
+      payment_status: 'REJECTED',
+      payment_rejected_at: isoNow(),
+      payment_rejection_reason: reason,
+      status: 'PENDING_PAYMENT'
+    });
+
+    res.json({ success: true, ticket: updated });
+  } catch (err) {
+    console.error('reject-payment admin error:', err);
+    res.status(500).json({ error: 'Could not reject payment.' });
   }
 });
 
@@ -711,6 +729,10 @@ app.get('/api/ticket/:ticketId/qr', async (req, res) => {
     const mobile = String(req.query.mobile || '').trim();
     if (!mobile || mobile !== ticket.mobile) {
       return res.status(401).send('Unauthorized.');
+    }
+
+    if (ticket.paymentStatus !== 'VERIFIED' || ticket.status !== 'CONFIRMED') {
+      return res.status(403).send('Payment is not verified yet.');
     }
 
     if (!ticketReleased(readConfig())) {
@@ -756,7 +778,12 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     const safeTicket = { ...ticket };
     delete safeTicket.signature;
 
-    if (!config.ticketReleased) {
+    const canShowQr =
+      config.ticketReleased &&
+      ticket.paymentStatus === 'VERIFIED' &&
+      ticket.status === 'CONFIRMED';
+
+    if (!config.ticketReleased || !canShowQr) {
       return res.json({
         released: false,
         ticket: safeTicket,
@@ -766,9 +793,9 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     }
 
     res.json({
-      released: true,
+      released: canShowQr,
       ticket: safeTicket,
-      qrDataUrl: ticket.signature ? awaitQr(ticket) : null,
+      qrDataUrl: canShowQr && ticket.signature ? awaitQr(ticket) : null,
       config
     });
   } catch (err) {
@@ -802,6 +829,17 @@ app.post('/api/manual-scan', async (req, res) => {
     }
 
     const config = publicConfig();
+
+    if (ticket.paymentStatus !== 'VERIFIED' || ticket.status !== 'CONFIRMED') {
+      const updated = await recordScanAttempt(
+        ticketId, scanTime, staff, 'PAYMENT_NOT_VERIFIED_MANUAL'
+      );
+      return res.json({
+        status: 'INVALID',
+        message: 'Payment is not verified yet. Entry not allowed.',
+        ticket: updated || ticket
+      });
+    }
 
     if (!config.ticketReleased) {
       const updated = await recordScanAttempt(
@@ -902,6 +940,17 @@ app.post('/api/scan', async (req, res) => {
 
     const config = publicConfig();
     const scanTime = isoNow();
+
+    if (ticket.paymentStatus !== 'VERIFIED' || ticket.status !== 'CONFIRMED') {
+      const updated = await recordScanAttempt(
+        ticketId, scanTime, staff, 'PAYMENT_NOT_VERIFIED'
+      );
+      return res.json({
+        status: 'INVALID',
+        message: 'Payment is not verified yet. Entry not allowed.',
+        ticket: updated || ticket
+      });
+    }
 
     if (!config.ticketReleased) {
       const updated = await recordScanAttempt(
@@ -1027,7 +1076,7 @@ app.get('/api/admin/tickets', requireAdmin, async (req, res) => {
       tickets,
       config: publicConfig(),
       summary: {
-        paid: tickets.length,
+        paid: tickets.filter(t => t.paymentStatus === 'VERIFIED').length,
         used,
         unused: tickets.length - used,
         scanAttempts: scans
@@ -1054,6 +1103,10 @@ app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
       'Qty',
       'People',
       'Amount',
+      'UTR',
+      'Payment Status',
+      'Payment Submitted At',
+      'Payment Verified At',
       'Status',
       'First Entry (IST)',
       'Scans'
@@ -1071,6 +1124,10 @@ app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
         t.qty,
         t.people,
         t.amountRupees,
+        t.utr || '',
+        t.paymentStatus || 'PENDING',
+        formatIndia(t.paymentSubmittedAt),
+        formatIndia(t.paymentVerifiedAt),
         t.status,
         formatIndia(t.scannedAt),
         Array.isArray(t.scanHistory) ? t.scanHistory.length : 0
