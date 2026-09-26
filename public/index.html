@@ -51,6 +51,7 @@ async function showPayment(){
     const r=await fetch('/api/create-booking',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,qty:q,name:n,mobile:m,eventDate})});
     const data=await r.json();
     if(r.status===409){
+      document.getElementById('payment').classList.remove('hidden');
       status.innerHTML='<div class="status warning"><b>⚠️ Ticket Already Created</b><br>This mobile number already has a booking.<br>Please check <b>MY TICKET</b> using your Booking ID and registered mobile number.</div>';
       return;
     }
