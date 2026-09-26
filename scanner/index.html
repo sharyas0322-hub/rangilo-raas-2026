@@ -42,11 +42,63 @@ window.addEventListener('load',async()=>{
  function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
  function show(cls,title,msg,t){let h='';if(t){const hist=t.scanHistory||[];h='<div class="history"><b>Scan History</b>'+hist.slice().reverse().map(x=>'<div>'+india(x.at)+' — '+esc(x.result)+' — '+esc(x.staff)+'</div>').join('')+'</div>'}result.className='state '+cls;result.innerHTML='<b>'+title+'</b><br>'+msg+h;result.scrollIntoView({behavior:'smooth',block:'nearest'})}
  function ticketHtml(j){return '<br><b>Ticket:</b> '+esc(j.ticket.ticketId)+'<br><b>Name:</b> '+esc(j.ticket.name)+'<br><b>Pass:</b> '+esc(j.ticket.type)+'<br><b>Entry time:</b> '+india(j.ticket.scannedAt)}
+ let pendingApproval=null;
+
+ function customerDetails(t){
+   if(!t)return '';
+   return '<div style="margin-top:12px;padding:12px;background:#ffffff0d;border-radius:10px;line-height:1.7">'+
+     '<b>Ticket ID:</b> '+esc(t.ticketId)+
+     '<br><b>Customer Name:</b> '+esc(t.name)+
+     '<br><b>Mobile:</b> '+esc(t.mobile)+
+     '<br><b>Pass Type:</b> '+esc(t.type)+
+     '<br><b>Persons:</b> '+esc(t.people)+
+     '<br><b>Ticket Value:</b> ₹'+esc(t.amountRupees)+
+     '<br><b>Payment:</b> '+esc(t.paymentStatus||'VERIFIED')+
+   '</div>';
+ }
+
  function processResponse(j){
-   if(j.status==='VALID') show('ok','VALID ENTRY ✓',j.message+ticketHtml(j),j.ticket);
-   else if(j.status==='ALREADY_USED') show('warn','ALREADY SCANNED ⚠',j.message+'<br><b>First entry:</b> '+india(j.ticket.scannedAt)+'<br><b>This scan:</b> '+india((j.ticket.scanHistory||[]).at(-1)?.at),j.ticket);
+   if(j.status==='VALID'){
+     pendingApproval=j;
+     show('warn','TICKET VERIFIED ✓',
+       'Customer details check karein.'+customerDetails(j.ticket)+
+       '<button id="allowEntryBtn" style="margin-top:14px;background:#20bd70;color:#fff;font-weight:900">ALLOW ENTRY</button>'+
+       '<button id="denyEntryBtn" style="margin-top:8px;background:#7b1e2b;color:#fff;font-weight:900">CANCEL / DO NOT ALLOW</button>',
+       j.ticket);
+     document.getElementById('allowEntryBtn').onclick=allowPendingEntry;
+     document.getElementById('denyEntryBtn').onclick=denyPendingEntry;
+   } else if(j.status==='ALREADY_USED') show('warn','ALREADY SCANNED ⚠',
+     j.message+'<br><b>First entry:</b> '+india(j.ticket.scannedAt)+
+     '<br><b>This scan:</b> '+india((j.ticket.scanHistory||[]).at(-1)?.at),j.ticket);
    else if(j.status==='INVALID_DATE') show('bad','WRONG DATE ✕',j.message,j.ticket);
    else show('bad','INVALID ✕',j.message||'Invalid ticket',j.ticket);
+ }
+
+ async function allowPendingEntry(){
+   if(!pendingApproval?.ticket?.ticketId)return;
+   const ticket=pendingApproval.ticket;
+   const btn=document.getElementById('allowEntryBtn');
+   if(btn)btn.disabled=true;
+   try{
+     const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:ticket.ticketId,staff:document.getElementById('staff').value||'Gate Staff',approveEntry:true})});
+     const j=await r.json();
+     if(j.status==='VALID'){
+       show('ok','ENTRY ALLOWED ✓',
+         'Entry approved. Ticket marked as used.'+customerDetails(j.ticket),j.ticket);
+       pendingApproval=null;
+     }else{
+       processResponse(j);
+     }
+   }catch(e){
+     show('bad','ENTRY ERROR ✕',e.message||'Could not approve entry.',ticket);
+   }finally{
+     if(btn)btn.disabled=false;
+   }
+ }
+
+ function denyPendingEntry(){
+   pendingApproval=null;
+   show('bad','ENTRY NOT ALLOWED ✕','Staff ne entry allow nahi ki. Ticket ko dobara scan karke verify kar sakte hain.');
  }
  async function submitQrText(text){if(busy)return;busy=true;try{const data=JSON.parse(text);if(!data.ticketId||!data.sig)throw new Error('Invalid QR');const r=await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:data.ticketId,sig:data.sig,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','INVALID ✕','QR is not a valid Rangilo Raas ticket.')}finally{setTimeout(()=>busy=false,1200)}}
  async function manualVerify(){if(busy)return;const ticketId=document.getElementById('manualTicketId').value.trim();if(!ticketId){show('bad','TICKET ID REQUIRED','Enter the Ticket ID printed on the ticket.');return}busy=true;try{const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','SERVER ERROR','Could not verify Ticket ID. Check the server connection.')}finally{busy=false}}
