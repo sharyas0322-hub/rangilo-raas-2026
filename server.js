@@ -796,9 +796,12 @@ app.delete('/api/admin/ticket/:ticketId', requireAdmin, async (req, res) => {
 });
 
 async function qrPayload(ticket) {
+  // Always generate the signature from the ticket ID on the server.
+  // This keeps customer QR generation reliable even if the database
+  // does not contain the legacy signature column/value.
   return JSON.stringify({
     ticketId: ticket.ticketId,
-    sig: ticket.signature
+    sig: signTicket(ticket.ticketId)
   });
 }
 
@@ -884,7 +887,7 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     res.json({
       released: canShowQr,
       ticket: safeTicket,
-      qrDataUrl: canShowQr && ticket.signature ? awaitQr(ticket) : null,
+      qrDataUrl: canShowQr ? awaitQr(ticket) : null,
       config
     });
   } catch (err) {
