@@ -62,11 +62,9 @@ window.addEventListener('load',async()=>{
      pendingApproval=j;
      show('warn','TICKET VERIFIED ✓',
        'Customer details check karein.'+customerDetails(j.ticket)+
-       '<button id="allowEntryBtn" style="margin-top:14px;background:#20bd70;color:#fff;font-weight:900">ALLOW ENTRY</button>'+
-       '<button id="denyEntryBtn" style="margin-top:8px;background:#7b1e2b;color:#fff;font-weight:900">CANCEL / DO NOT ALLOW</button>',
+       '<button id="allowEntryBtn" style="margin-top:14px;background:#20bd70;color:#fff;font-weight:900">ALLOW ENTRY</button>',
        j.ticket);
      document.getElementById('allowEntryBtn').onclick=allowPendingEntry;
-     document.getElementById('denyEntryBtn').onclick=denyPendingEntry;
    } else if(j.status==='ALREADY_USED') show('warn','ALREADY SCANNED ⚠',
      j.message+'<br><b>First entry:</b> '+india(j.ticket.scannedAt)+
      '<br><b>This scan:</b> '+india((j.ticket.scanHistory||[]).at(-1)?.at),j.ticket);
@@ -96,10 +94,7 @@ window.addEventListener('load',async()=>{
    }
  }
 
- function denyPendingEntry(){
-   pendingApproval=null;
-   show('bad','ENTRY NOT ALLOWED ✕','Staff ne entry allow nahi ki. Ticket ko dobara scan karke verify kar sakte hain.');
- }
+
  async function submitQrText(text){if(busy)return;busy=true;try{const data=JSON.parse(text);if(!data.ticketId||!data.sig)throw new Error('Invalid QR');const r=await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:data.ticketId,sig:data.sig,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','INVALID ✕','QR is not a valid Rangilo Raas ticket.')}finally{setTimeout(()=>busy=false,1200)}}
  async function manualVerify(){if(busy)return;const ticketId=document.getElementById('manualTicketId').value.trim();if(!ticketId){show('bad','TICKET ID REQUIRED','Enter the Ticket ID printed on the ticket.');return}busy=true;try{const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','SERVER ERROR','Could not verify Ticket ID. Check the server connection.')}finally{busy=false}}
  document.getElementById('manualBtn').addEventListener('click',manualVerify);document.getElementById('manualTicketId').addEventListener('keydown',e=>{if(e.key==='Enter')manualVerify()});
