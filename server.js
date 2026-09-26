@@ -820,7 +820,7 @@ app.get('/api/ticket/:ticketId/qr', async (req, res) => {
       return res.status(401).send('Unauthorized.');
     }
 
-    if (ticket.paymentStatus !== 'VERIFIED' || !['CONFIRMED', 'USED'].includes(ticket.status)) {
+    if (ticket.paymentStatus !== 'VERIFIED' || !['CONFIRMED', 'ENTERED', 'USED'].includes(ticket.status)) {
       return res.status(403).send('Payment is not verified yet.');
     }
 
@@ -870,7 +870,7 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     const canShowQr =
       config.ticketReleased &&
       ticket.paymentStatus === 'VERIFIED' &&
-      ['CONFIRMED', 'USED'].includes(ticket.status);
+      ['CONFIRMED', 'ENTERED', 'USED'].includes(ticket.status);
 
     if (!config.ticketReleased || !canShowQr) {
       return res.json({
@@ -919,13 +919,35 @@ app.post('/api/manual-scan', async (req, res) => {
 
     const config = publicConfig();
 
-    if (ticket.paymentStatus !== 'VERIFIED' || ticket.status !== 'CONFIRMED') {
+    if (ticket.paymentStatus !== 'VERIFIED') {
       const updated = await recordScanAttempt(
         ticketId, scanTime, staff, 'PAYMENT_NOT_VERIFIED_MANUAL'
       );
       return res.json({
         status: 'INVALID',
         message: 'Payment is not verified yet. Entry not allowed.',
+        ticket: updated || ticket
+      });
+    }
+
+    if (['ENTERED', 'USED'].includes(ticket.status) || ticket.used === true) {
+      const updated = await recordScanAttempt(
+        ticketId, scanTime, staff, 'ALREADY_USED_MANUAL'
+      );
+      return res.json({
+        status: 'ALREADY_USED',
+        message: 'ENTRY ALREADY USED — 2ND ENTRY NOT ALLOWED.',
+        ticket: updated || ticket
+      });
+    }
+
+    if (ticket.status !== 'CONFIRMED') {
+      const updated = await recordScanAttempt(
+        ticketId, scanTime, staff, 'INVALID_TICKET_STATUS_MANUAL'
+      );
+      return res.json({
+        status: 'INVALID',
+        message: 'Ticket is not active for entry.',
         ticket: updated || ticket
       });
     }
@@ -1030,13 +1052,35 @@ app.post('/api/scan', async (req, res) => {
     const config = publicConfig();
     const scanTime = isoNow();
 
-    if (ticket.paymentStatus !== 'VERIFIED' || ticket.status !== 'CONFIRMED') {
+    if (ticket.paymentStatus !== 'VERIFIED') {
       const updated = await recordScanAttempt(
         ticketId, scanTime, staff, 'PAYMENT_NOT_VERIFIED'
       );
       return res.json({
         status: 'INVALID',
         message: 'Payment is not verified yet. Entry not allowed.',
+        ticket: updated || ticket
+      });
+    }
+
+    if (['ENTERED', 'USED'].includes(ticket.status) || ticket.used === true) {
+      const updated = await recordScanAttempt(
+        ticketId, scanTime, staff, 'ALREADY_USED'
+      );
+      return res.json({
+        status: 'ALREADY_USED',
+        message: 'ENTRY ALREADY USED — 2ND ENTRY NOT ALLOWED.',
+        ticket: updated || ticket
+      });
+    }
+
+    if (ticket.status !== 'CONFIRMED') {
+      const updated = await recordScanAttempt(
+        ticketId, scanTime, staff, 'INVALID_TICKET_STATUS'
+      );
+      return res.json({
+        status: 'INVALID',
+        message: 'Ticket is not active for entry.',
         ticket: updated || ticket
       });
     }
@@ -1197,7 +1241,7 @@ app.get('/api/admin/ticket/:ticketId', requireAdmin, async (req, res) => {
     delete safeTicket.signature;
 
     let qrDataUrl = null;
-    if (ticket.paymentStatus === 'VERIFIED' && ['CONFIRMED', 'USED'].includes(ticket.status)) {
+    if (ticket.paymentStatus === 'VERIFIED' && ['CONFIRMED', 'ENTERED', 'USED'].includes(ticket.status)) {
       qrDataUrl = await awaitQr(ticket);
     }
 
