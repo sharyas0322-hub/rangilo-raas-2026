@@ -11,7 +11,7 @@
 <div id="lookup" class="modal"><div class="box"><button class="close" onclick="document.getElementById('lookup').classList.remove('show')">×</button><h2>🎟️ My Ticket</h2><p class="note">Enter your Ticket / Booking ID and registered mobile number.</p><label>Booking / Ticket ID</label><input id="lookupId" placeholder="RR26-XXXXXXXX-XXXXXX"><label>Registered Mobile</label><input id="lookupMobile" maxlength="10" inputmode="numeric" placeholder="10-digit mobile number"><button class="action" onclick="lookupTicket()">VIEW MY TICKET</button><div id="lookupStatus"></div></div></div>
 <section class="contact"><h2 style="color:#ffd333">📞 Contact & Organizer</h2><b>Organised by Shaurya Gupta</b><div style="margin:8px">WhatsApp: <b>9471494356</b></div><a href="https://wa.me/919471494356" target="_blank" rel="noopener">💬 Contact Organizer</a><p style="opacity:.75;font-size:13px">Venue: Aashirvadd Banquet Hall • Entry: Gate No. 1</p></section>
 <script>
-let price=299,type='NORMAL SINGLE',people=1,eventDate='2026-10-17',currentTicket=null,verificationPollTimer=null;
+let price=299,type='NORMAL SINGLE',people=1,eventDate='2026-10-17',currentTicket=null;
 
 // Select ticket type
 document.querySelectorAll('.hotspot').forEach(b=>b.onclick=()=>{
@@ -79,29 +79,10 @@ async function submitUtr(){
   try{
     const r=await fetch('/api/submit-utr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:currentTicket.ticketId,mobile:currentTicket.mobile,utr})});
     const data=await r.json(); if(!r.ok)throw new Error(data.error||'Could not submit UTR.');
-    st.innerHTML='<div class="status success"><b>✅ UTR submitted successfully.</b><br><br><b>Payment verification admin karega.</b><br>Verification hone tak apna <b>Booking ID save rakhein:</b><br><strong>'+escapeHtml(currentTicket.ticketId)+'</strong><br><br>⏱️ <b>5 minutes baad MY TICKET me check again karein.</b><br>Admin verify karte hi ticket yahin automatically update hoga aur QR active ho jayega.</div>';
+    st.innerHTML='<div class="status success"><b>✅ UTR submitted successfully.</b><br><br><b>Payment verification admin karega.</b><br>Verification hone tak apna <b>Booking ID save rakhein:</b><br><strong>'+escapeHtml(currentTicket.ticketId)+'</strong><br><br>⏱️ <b>5 minutes baad MY TICKET me Booking ID + mobile number se check again karein.</b><br>Payment verified hone ke baad aapka ticket QR automatically active ho jayega.</div>';
     document.getElementById('utrInput').disabled=true;
     document.getElementById('utrBtn').disabled=true;
-    startVerificationPolling();
   }catch(e){document.getElementById('utrBtn').disabled=false;st.textContent=e.message;}
-}
-
-function startVerificationPolling(){
-  if(verificationPollTimer)clearInterval(verificationPollTimer);
-  verificationPollTimer=setInterval(async()=>{
-    if(!currentTicket)return;
-    try{
-      const r=await fetch('/api/ticket/'+encodeURIComponent(currentTicket.ticketId)+'?mobile='+encodeURIComponent(currentTicket.mobile)+'&t='+Date.now(),{cache:'no-store'});
-      if(!r.ok)return;
-      const data=await r.json();
-      currentTicket=data.ticket;
-      if(data.ticket.paymentStatus==='VERIFIED'){
-        clearInterval(verificationPollTimer);
-        verificationPollTimer=null;
-        showTicket(data.ticket,data.qrDataUrl,data.config);
-      }
-    }catch(e){}
-  },5000);
 }
 
 function formatDate(d){return d==='2026-10-17'?'17 October 2026':d}
