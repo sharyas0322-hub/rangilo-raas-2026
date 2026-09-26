@@ -1,5 +1,15 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rangilo Raas - Gate Scanner</title>
-<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#080c20;color:#fff;padding:18px}.wrap{max-width:600px;margin:auto}.box{background:#111735;border-radius:18px;padding:18px;box-shadow:0 10px 40px #0005}.state{padding:13px;border-radius:12px;background:#ffffff10;margin:12px 0;line-height:1.5}.active{background:#0b6b3a}.inactive{background:#6d5200}.ok{background:#0b6b3a}.bad{background:#7b1e2b}.warn{background:#6d5200}.small{opacity:.85;font-size:13px;line-height:1.45}input,button{width:100%;padding:12px;margin-top:10px;border-radius:9px;border:0;font-size:16px}input{background:#070b1d;color:#fff;border:1px solid #ffffff22}button{background:#ffd333;color:#111;font-weight:bold;cursor:pointer}.divider{display:flex;align-items:center;gap:10px;margin:18px 0;color:#aaa}.divider:before,.divider:after{content:"";height:1px;background:#ffffff22;flex:1}.manual{padding:14px;background:#ffffff08;border-radius:12px}.history{margin-top:14px;border-top:1px solid #ffffff22;padding-top:12px}.history div{padding:8px 0;border-bottom:1px solid #ffffff12;font-size:13px}#reader{margin-top:12px;overflow:hidden;border-radius:12px} .camera-note{margin-top:8px;font-size:12px;color:#bbb}.testbox{display:none;margin-top:12px;padding:12px;border:1px dashed #ffd33355;border-radius:12px;background:#ffd33308}.testbox button{background:#6ee7b7}.testbox.off button{background:#ffd333}</style>
+<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#080c20;color:#fff;padding:18px}.wrap{max-width:600px;margin:auto}.box{background:#111735;border-radius:18px;padding:18px;box-shadow:0 10px 40px #0005}.state{padding:13px;border-radius:12px;background:#ffffff10;margin:12px 0;line-height:1.5}.active{background:#0b6b3a}.inactive{background:#6d5200}.ok{background:#0b6b3a}.bad{background:#7b1e2b}.warn{background:#6d5200}.small{opacity:.85;font-size:13px;line-height:1.45}input,button{width:100%;padding:12px;margin-top:10px;border-radius:9px;border:0;font-size:16px}input{background:#070b1d;color:#fff;border:1px solid #ffffff22}button{background:#ffd333;color:#111;font-weight:bold;cursor:pointer}.divider{display:flex;align-items:center;gap:10px;margin:18px 0;color:#aaa}.divider:before,.divider:after{content:"";height:1px;background:#ffffff22;flex:1}.manual{padding:14px;background:#ffffff08;border-radius:12px}.history{margin-top:14px;border-top:1px solid #ffffff22;padding-top:12px}.history div{padding:8px 0;border-bottom:1px solid #ffffff12;font-size:13px}#reader{margin-top:12px;overflow:hidden;border-radius:12px}
+.scan-overlay{display:none;position:fixed;inset:0;background:#000b;z-index:1000;align-items:center;justify-content:center;padding:16px}
+.scan-overlay.show{display:flex}
+.scan-card{width:min(520px,100%);max-height:92vh;overflow:auto;background:linear-gradient(145deg,#111a3c,#070b1d);border:2px solid #ffd333;border-radius:24px;box-shadow:0 25px 100px #000;overflow:hidden}
+.scan-card-head{padding:22px;text-align:center;background:radial-gradient(circle at 50% 0,#472a80,#0a1230)}
+.scan-icon{font-size:42px}.scan-title{font-size:27px;font-weight:900;color:#ffd333;margin-top:5px}.scan-sub{opacity:.85;margin-top:5px}
+.scan-details{padding:18px}.scan-detail{display:flex;justify-content:space-between;gap:15px;padding:11px 0;border-bottom:1px dashed #ffffff22}.scan-detail b:first-child{color:#ffd333}.scan-detail b:last-child{text-align:right}
+.scan-status{margin:0 18px 16px;padding:13px;border-radius:12px;text-align:center;font-weight:900;background:#0b6b3a}
+.scan-actions{padding:0 18px 20px}.allow-entry{width:100%;padding:16px;border:0;border-radius:12px;background:#20bd70;color:#fff;font-size:18px;font-weight:900;cursor:pointer}.allow-entry:disabled{opacity:.6}.next-scan{width:100%;padding:12px;border:1px solid #ffffff22;border-radius:12px;background:#ffffff0b;color:#fff;font-size:15px;font-weight:800;cursor:pointer;margin-top:10px}
+.scan-card.warning{border-color:#ffd333}.scan-card.danger{border-color:#ff5c70}.scan-status.danger{background:#7b1e2b}.scan-status.warning{background:#6d5200}
+@media(max-width:520px){.scan-card{border-radius:18px}.scan-title{font-size:23px}.scan-details{padding:14px}.scan-detail{font-size:14px}} .camera-note{margin-top:8px;font-size:12px;color:#bbb}.testbox{display:none;margin-top:12px;padding:12px;border:1px dashed #ffd33355;border-radius:12px;background:#ffd33308}.testbox button{background:#6ee7b7}.testbox.off button{background:#ffd333}</style>
 <script src="https://unpkg.com/html5-qrcode" defer></script></head><body><div class="wrap"><div class="box"><h2>🎟️ Rangilo Raas Gate Scanner</h2><div id="releaseState" class="state">Checking scanner status...</div><p class="small"><b>Camera is the primary method.</b> Point the gate phone camera at the customer's QR. If camera access is unavailable, use the Ticket ID verification below.</p><label>Staff name</label><input id="staff" placeholder="Staff name" value="Gate Staff">
 <div id="reader"></div><div id="cameraStatus" class="camera-note">Starting camera…</div>
 <div id="localTestBox" class="testbox">
@@ -11,6 +21,18 @@
 <div class="divider">OR</div>
 <div class="manual"><b>🔎 Ticket ID Verification (Camera Backup)</b><div class="small" style="margin-top:6px">Use only when the QR camera cannot be used. Enter the exact Ticket ID printed on the customer's ticket.</div><input id="manualTicketId" autocomplete="off" autocapitalize="characters" placeholder="e.g. RR26-XXXXXXXX-XXXXXX"><button id="manualBtn">VERIFY TICKET ID</button></div>
 <div class="divider">QR IMAGE BACKUP</div><label class="small">If camera is unavailable, choose a saved QR image:</label><input id="qrFile" type="file" accept="image/*"><div id="result"></div></div></div>
+<div id="scanOverlay" class="scan-overlay" aria-hidden="true">
+  <div id="scanCard" class="scan-card">
+    <div class="scan-card-head">
+      <div id="scanIcon" class="scan-icon">🎟️</div>
+      <div id="scanTitle" class="scan-title">TICKET VERIFIED</div>
+      <div id="scanSub" class="scan-sub">Customer details verified</div>
+    </div>
+    <div id="scanDetails" class="scan-details"></div>
+    <div id="scanStatus" class="scan-status">READY FOR ENTRY</div>
+    <div id="scanActions" class="scan-actions"></div>
+  </div>
+</div>
 <script>
 window.addEventListener('load',async()=>{
  const result=document.getElementById('result'),state=document.getElementById('releaseState'),cameraStatus=document.getElementById('cameraStatus');let qr=null,busy=false,active=false;
@@ -46,30 +68,62 @@ window.addEventListener('load',async()=>{
 
  function customerDetails(t){
    if(!t)return '';
-   return '<div style="margin-top:12px;padding:12px;background:#ffffff0d;border-radius:10px;line-height:1.7">'+
-     '<b>Ticket ID:</b> '+esc(t.ticketId)+
-     '<br><b>Customer Name:</b> '+esc(t.name)+
-     '<br><b>Mobile:</b> '+esc(t.mobile)+
-     '<br><b>Pass Type:</b> '+esc(t.type)+
-     '<br><b>Persons:</b> '+esc(t.people)+
-     '<br><b>Ticket Value:</b> ₹'+esc(t.amountRupees)+
-     '<br><b>Payment:</b> '+esc(t.paymentStatus||'VERIFIED')+
-   '</div>';
+   return '<div class="scan-detail"><b>Ticket ID</b><b>'+esc(t.ticketId)+'</b></div>'+
+     '<div class="scan-detail"><b>Customer</b><b>'+esc(t.name)+'</b></div>'+
+     '<div class="scan-detail"><b>Mobile</b><b>'+esc(t.mobile)+'</b></div>'+
+     '<div class="scan-detail"><b>Pass Type</b><b>'+esc(t.type)+'</b></div>'+
+     '<div class="scan-detail"><b>Entry For</b><b>'+esc(t.people)+' Person(s)</b></div>'+
+     '<div class="scan-detail"><b>Ticket Value</b><b>₹'+esc(t.amountRupees)+'</b></div>';
+ }
+
+ function closeScanCard(){
+   const o=document.getElementById('scanOverlay');
+   o.classList.remove('show'); o.setAttribute('aria-hidden','true');
+   document.getElementById('scanActions').innerHTML='';
+   pendingApproval=null;
+ }
+
+ function openScanCard(title,sub,icon,t,mode){
+   const o=document.getElementById('scanOverlay'),card=document.getElementById('scanCard');
+   card.className='scan-card'+(mode==='danger'?' danger':mode==='warning'?' warning':'');
+   document.getElementById('scanIcon').textContent=icon;
+   document.getElementById('scanTitle').textContent=title;
+   document.getElementById('scanSub').textContent=sub;
+   document.getElementById('scanDetails').innerHTML=customerDetails(t);
+   document.getElementById('scanStatus').className='scan-status '+(mode==='danger'?'danger':mode==='warning'?'warning':'');
+   o.classList.add('show'); o.setAttribute('aria-hidden','false');
  }
 
  function processResponse(j){
    if(j.status==='VALID'){
      pendingApproval=j;
-     show('warn','TICKET VERIFIED ✓',
-       'Customer details check karein.'+customerDetails(j.ticket)+
-       '<button id="allowEntryBtn" style="margin-top:14px;background:#20bd70;color:#fff;font-weight:900">ALLOW ENTRY</button>',
-       j.ticket);
+     openScanCard('TICKET VERIFIED','Check customer details before allowing entry.','🎟️',j.ticket,'warning');
+     document.getElementById('scanStatus').textContent='READY FOR ENTRY';
+     document.getElementById('scanActions').innerHTML=
+       '<button id="allowEntryBtn" class="allow-entry">✓ ALLOW ENTRY</button>'+
+       '<button id="nextScanBtn" class="next-scan">SCAN NEXT TICKET</button>';
      document.getElementById('allowEntryBtn').onclick=allowPendingEntry;
-   } else if(j.status==='ALREADY_USED') show('warn','ALREADY SCANNED ⚠',
-     j.message+'<br><b>First entry:</b> '+india(j.ticket.scannedAt)+
-     '<br><b>This scan:</b> '+india((j.ticket.scanHistory||[]).at(-1)?.at),j.ticket);
-   else if(j.status==='INVALID_DATE') show('bad','WRONG DATE ✕',j.message,j.ticket);
-   else show('bad','INVALID ✕',j.message||'Invalid ticket',j.ticket);
+     document.getElementById('nextScanBtn').onclick=closeScanCard;
+   } else if(j.status==='ALREADY_USED'){
+     openScanCard('ENTRY ALREADY USED','This ticket cannot be used again.','⚠️',j.ticket,'warning');
+     document.getElementById('scanStatus').textContent='2ND ENTRY NOT ALLOWED';
+     document.getElementById('scanActions').innerHTML=
+       '<button class="next-scan" id="usedNextBtn">SCAN NEXT TICKET</button>';
+     document.getElementById('usedNextBtn').onclick=closeScanCard;
+   } else if(j.status==='INVALID_DATE'){
+     openScanCard('WRONG DATE','This ticket is not valid today.','❌',j.ticket,'danger');
+     document.getElementById('scanStatus').textContent='ENTRY NOT ALLOWED';
+     document.getElementById('scanActions').innerHTML=
+       '<button class="next-scan" id="dateNextBtn">CLOSE</button>';
+     document.getElementById('dateNextBtn').onclick=closeScanCard;
+   } else {
+     const t=j.ticket||{ticketId:'-',name:'-',mobile:'-',type:'-',people:'-',amountRupees:'-'};
+     openScanCard('INVALID TICKET',j.message||'Invalid ticket','❌',t,'danger');
+     document.getElementById('scanStatus').textContent='ENTRY NOT ALLOWED';
+     document.getElementById('scanActions').innerHTML=
+       '<button class="next-scan" id="invalidNextBtn">CLOSE</button>';
+     document.getElementById('invalidNextBtn').onclick=closeScanCard;
+   }
  }
 
  async function allowPendingEntry(){
@@ -81,14 +135,21 @@ window.addEventListener('load',async()=>{
      const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:ticket.ticketId,staff:document.getElementById('staff').value||'Gate Staff',approveEntry:true})});
      const j=await r.json();
      if(j.status==='VALID'){
-       show('ok','ENTRY ALLOWED ✓',
-         'Entry approved. Ticket marked as used.'+customerDetails(j.ticket),j.ticket);
        pendingApproval=null;
+       openScanCard('ENTRY ALLOWED','Entry successfully recorded for this customer.','✅',j.ticket,'ok');
+       document.getElementById('scanStatus').textContent='ENTRY DONE • TICKET USED';
+       document.getElementById('scanActions').innerHTML=
+         '<button class="next-scan" id="successNextBtn">SCAN NEXT TICKET</button>';
+       document.getElementById('successNextBtn').onclick=closeScanCard;
      }else{
        processResponse(j);
      }
    }catch(e){
-     show('bad','ENTRY ERROR ✕',e.message||'Could not approve entry.',ticket);
+     document.getElementById('scanStatus').className='scan-status danger';
+     document.getElementById('scanStatus').textContent='ENTRY NOT RECORDED';
+     document.getElementById('scanActions').innerHTML=
+       '<button class="next-scan" id="errorNextBtn">CLOSE</button>';
+     document.getElementById('errorNextBtn').onclick=closeScanCard;
    }finally{
      if(btn)btn.disabled=false;
    }
