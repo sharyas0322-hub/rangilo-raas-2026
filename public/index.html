@@ -79,7 +79,7 @@ async function submitUtr(){
   try{
     const r=await fetch('/api/submit-utr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:currentTicket.ticketId,mobile:currentTicket.mobile,utr})});
     const data=await r.json(); if(!r.ok)throw new Error(data.error||'Could not submit UTR.');
-    st.innerHTML='<b>✅ UTR submitted.</b><br>Payment verification admin karega. Booking ID: '+escapeHtml(currentTicket.ticketId);
+    st.innerHTML='<div class="status success"><b>✅ UTR submitted successfully.</b><br><br><b>Payment verification admin karega.</b><br>Verification hone tak apna <b>Booking ID save rakhein:</b><br><strong>'+escapeHtml(currentTicket.ticketId)+'</strong><br><br>⏱️ <b>5 minutes baad MY TICKET me Booking ID + mobile number se check again karein.</b><br>Payment verified hone ke baad aapka ticket QR automatically active ho jayega.</div>';
     document.getElementById('utrInput').disabled=true;
     document.getElementById('utrBtn').disabled=true;
   }catch(e){document.getElementById('utrBtn').disabled=false;st.textContent=e.message;}
@@ -95,8 +95,8 @@ async function lookupTicket(){
   try{const r=await fetch('/api/ticket/'+encodeURIComponent(id)+'?mobile='+encodeURIComponent(mobile));const data=await r.json();if(!r.ok)throw new Error(data.error||'Ticket not found');document.getElementById('lookup').classList.remove('show');showTicket(data.ticket,data.qrDataUrl,data.config)}catch(e){box.innerHTML='<div class="status error">'+escapeHtml(e.message)+'</div>'}
 }
 function showTicket(t,qr,config){
-  const verified=t.paymentStatus==='VERIFIED'&&t.status==='CONFIRMED';
-  const qrHtml=verified&&qr?'<div class="qrbox"><img src="'+qr+'" alt="Ticket QR"><div class="scan-label">SCAN AT GATE • ONE-TIME ENTRY</div></div>':'<div class="status warning"><b>⏳ Payment verification pending</b><br>QR ticket active after admin verification.</div>';
+  const verified=t.paymentStatus==='VERIFIED'&&(t.status==='CONFIRMED'||t.status==='USED');
+  const qrHtml=verified&&qr?'<div class="qrbox"><img src="'+qr+'" alt="Ticket QR"><div class="scan-label">'+(t.status==='USED'?'ENTRY ALREADY USED • 2ND ENTRY NOT ALLOWED':'SCAN AT GATE • ONE-TIME ENTRY')+'</div></div>':'<div class="status warning"><b>⏳ Payment verification pending</b><br>QR ticket active after admin verification.</div>';
   document.getElementById('ticketBody').innerHTML='<div class="ticket-head"><div class="brand">SS EVENTS</div><h1>RANGILO RAAS</h1><div class="event">DANDIYA NIGHT 2026</div><div class="ticket-date">'+formatDate(t.eventDate)+' • 5:00 PM – 11:00 PM</div></div><div class="ticket-main"><div class="ticket-grid"><div class="ticket-info"><p><strong>Booking / Ticket ID</strong><br>'+escapeHtml(t.ticketId)+'</p><p><strong>Name</strong><br>'+escapeHtml(t.name)+'</p><p><strong>Mobile</strong><br>'+escapeHtml(t.mobile)+'</p><p><strong>Pass Type</strong><br><span class="pass-pill">'+escapeHtml(t.type)+'</span></p><p><strong>Entry For</strong><br>'+t.people+' Person(s)</p><p><strong>Ticket Value</strong><br>₹'+t.amountRupees+'</p><p><strong>Payment Status</strong><br>'+escapeHtml(t.paymentStatus||'PENDING')+'</p></div>'+qrHtml+'</div></div><div class="venuebar"><div class="venue">📍 Aashirvadd Banquet Hall</div><div>Near Gai Ghat, Patna, Bihar</div><div class="gate">🚪 GATE NO. 1 — MAIN ENTRY</div></div><div class="ticket-foot">Garba • Dandiya • Live Music & DJ • Selfie Zones • Food Stalls & Refreshments<br><b>ONE-TIME TICKET • SCAN AT GATE</b></div>';
   document.getElementById('ticket').classList.add('show');
 }
