@@ -14,7 +14,15 @@
 <div class="stat"><b id="used">0</b><span>Entries Allowed</span></div>
 </div><div id="entryStatus" class="status ok">🟢 Scanner is ready.</div>
 <div class="actions"><button class="secondary" onclick="loadTickets()">🔄 REFRESH</button><button class="secondary" onclick="openScanner()">📷 OPEN GATE SCANNER</button><button class="secondary" onclick="downloadCsv()">⬇️ DOWNLOAD CSV</button></div></div>
-<div class="card"><h2>⏳ Pending UTR Payments</h2><p class="muted">BharatPe transaction history me UTR, customer aur actual received amount match karke VERIFY karein. Verify karte waqt <b>actual amount received</b> enter karein.</p><div class="table"><table><thead><tr><th>Booking ID</th><th>Name</th><th>Mobile</th><th>Ticket Value</th><th>UTR</th><th>Screenshot</th><th>Submitted</th><th>Actual Received</th><th>Action</th></tr></thead><tbody id="pendingRows"></tbody></table></div></div>
+<div class="card" style="border:2px solid #f59e0b">
+<h2>🛟 Backup Verify by Ticket ID</h2>
+<p class="muted">Website/payment flow me problem ho to existing Booking/Ticket ID se manual verification kar sakte hain. Ye <b>manual override</b> hai—payment independently confirm karke hi use karein.</p>
+<div class="actions">
+<input id="backupTicketId" placeholder="Enter Booking / Ticket ID" style="flex:1;min-width:220px;text-transform:uppercase">
+<button class="verify" onclick="backupVerify()">🛟 BACKUP VERIFY</button>
+</div>
+<div id="backupStatus"></div>
+</div><div class="card"><h2>⏳ Pending UTR Payments</h2><p class="muted">BharatPe transaction history me UTR, customer aur actual received amount match karke VERIFY karein. Verify karte waqt <b>actual amount received</b> enter karein.</p><div class="table"><table><thead><tr><th>Booking ID</th><th>Name</th><th>Mobile</th><th>Ticket Value</th><th>UTR</th><th>Screenshot</th><th>Submitted</th><th>Actual Received</th><th>Action</th></tr></thead><tbody id="pendingRows"></tbody></table></div></div>
 <div class="card"><h2>🟠 Awaiting Payment / UTR <span class="badge" id="awaitingCount">0</span></h2><p class="muted">These customers completed the booking form, but no UTR has been submitted yet. Payment is not confirmed. Use this list to identify bookings that are still waiting for payment/UTR.</p><div class="table"><table><thead><tr><th>Booking ID</th><th>Name</th><th>Mobile</th><th>Pass</th><th>Amount</th><th>Created</th></tr></thead><tbody id="awaitingRows"></tbody></table></div></div><div class="card"><h2>💳 All Customer Tickets <span class="badge" id="allCount">0</span></h2><p class="muted">Every booking remains saved in the database until you intentionally CANCEL or DELETE it. VIEW opens the complete ticket. CANCEL removes the booking and allows the mobile to book again. DELETE is for test/faulty cleanup. Verified tickets show the active QR.</p><div class="table"><table><thead><tr><th>Ticket ID</th><th>Name</th><th>Mobile</th><th>Date</th><th>Pass</th><th>Ticket Value</th><th>Received</th><th>UTR</th><th>Payment</th><th>Entry</th><th>Ticket</th><th>Manage (Cancel / Delete)</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 <div class="card"><h2>📷 Gate Scanner</h2><p>Camera is the primary method. If camera permission is unavailable, Ticket ID verification is available as backup.</p><div class="status">📍 Aashirvadd Banquet Hall • 🚪 Gate No. 1 — Main Entry</div><button onclick="openScanner()">OPEN SCANNER</button></div>
 </div></div>
@@ -29,6 +37,23 @@ function enter(){$('loginCard').classList.add('hidden');$('panel').classList.rem
 async function login(){try{await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('username').value.trim(),password:$('password').value})});enter();loadTickets()}catch(e){$('loginStatus').innerHTML='<div class="status bad">'+esc(e.message)+'</div>'}}
 window.addEventListener('load',async()=>{try{await api('/api/admin/me');enter();loadTickets()}catch{}});
 async function logout(){try{await api('/api/admin/logout',{method:'POST'})}catch{}location.reload()}
+async function backupVerify(){
+  const id=$('backupTicketId').value.trim().toUpperCase();
+  if(!id) return $('backupStatus').innerHTML='<div class="status bad">Enter Booking / Ticket ID.</div>';
+  if(!confirm('Backup verify '+id+'? Please confirm that the payment has actually been received.')) return;
+  try{
+    const j=await api('/api/admin/backup-verify',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ticketId:id})
+    });
+    $('backupStatus').innerHTML='<div class="status ok">✅ '+esc(j.alreadyVerified?'Ticket was already verified.':'Ticket verified successfully.')+' Customer ticket is now active on both sides. Booking ID: <b>'+esc(j.ticket.ticketId)+'</b></div>';
+    $('backupTicketId').value='';
+    await loadTickets();
+  }catch(e){
+    $('backupStatus').innerHTML='<div class="status bad">'+esc(e.message)+'</div>';
+  }
+}
 async function loadPendingPayments(){try{const j=await api('/api/admin/pending-payments');$('pendingRows').innerHTML=j.tickets.map(x=>'<tr><td>'+esc(x.ticketId)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mobile)+'</td><td>'+money(x.amountRupees)+'</td><td><b>'+esc(x.utr)+'</b></td><td><button class="view-btn" onclick="viewPaymentScreenshot(\''+esc(x.ticketId)+'\')">🖼️ VIEW SCREENSHOT</button></td><td>'+esc(x.paymentSubmittedAt?india(x.paymentSubmittedAt):'-')+'</td><td><input class="amount-input" id="amt-'+esc(x.ticketId)+'" type="number" min="0.01" step="0.01" value="'+esc(x.amountRupees)+'"></td><td><button class="verify" onclick="verifyPayment(\''+esc(x.ticketId)+'\')">VERIFY</button><button class="danger" onclick="rejectPayment(\''+esc(x.ticketId)+'\')">REJECT</button></td></tr>').join('')||'<tr><td colspan="9">No pending UTR payments.</td></tr>'}catch(e){$('pendingRows').innerHTML='<tr><td colspan="8">'+esc(e.message)+'</td></tr>'}}
 async function viewPaymentScreenshot(id){
   try{
