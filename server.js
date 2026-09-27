@@ -1126,6 +1126,26 @@ async function awaitQr(ticket) {
   });
 }
 
+app.get('/api/ticket-by-mobile-email', async (req, res) => {
+  try {
+    const mobile = String(req.query.mobile || '').trim();
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!/^[6-9]\d{9}$/.test(mobile) || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Enter a valid mobile number and email ID.' });
+    }
+    const ticket = await getTicketByMobileAndEmail(mobile, email);
+    if (!ticket) return res.status(404).json({ error: 'No booking found for this mobile number and email.' });
+    const safeTicket = { ...ticket };
+    delete safeTicket.signature;
+    const config = publicConfig();
+    const canShowQr = config.ticketReleased && ticket.paymentStatus === 'VERIFIED' && ['CONFIRMED','ENTERED','USED'].includes(ticket.status);
+    res.json({ released: canShowQr, ticket: safeTicket, qrDataUrl: canShowQr ? awaitQr(ticket) : null, config });
+  } catch (err) {
+    console.error('ticket lookup by mobile/email error:', err);
+    res.status(500).json({ error: 'Could not load ticket.' });
+  }
+});
+
 app.get('/api/ticket/:ticketId/qr', async (req, res) => {
   try {
     const ticket = await getTicketById(req.params.ticketId);
