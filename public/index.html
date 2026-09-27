@@ -115,7 +115,9 @@ function sendTicketWhatsApp(){
     '🚪 Gate No. 1 — Main Entry\n\n'+
     'Please keep your Booking / Ticket ID and registered mobile number safe.\n'+
     'Use MY TICKET on the website to view your QR ticket.';
-  const url='https://wa.me/'+String(t.mobile||'').replace(/\\D/g,'')+'?text='+encodeURIComponent(msg);
+  const cleanMobile=String(t.mobile||'').replace(/\\D/g,'');
+  const waNumber=cleanMobile.length===10 ? '91'+cleanMobile : cleanMobile;
+  const url='https://wa.me/'+waNumber+'?text='+encodeURIComponent(msg);
   window.open(url,'_blank');
 }
 
