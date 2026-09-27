@@ -5,7 +5,6 @@ const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
 const QRCode = require('qrcode');
-const { Resend } = require('resend');
 const PDFDocument = require('pdfkit');
 
 const app = express();
@@ -587,31 +586,6 @@ function makeTicketPdfBuffer(ticket){
     }catch(e){reject(e);}
   });
 }
-async function sendVerifiedTicketEmail(ticket){
-  if(!process.env.RESEND_API_KEY || !process.env.TICKET_EMAIL_FROM || !ticket.email) return {status:'NOT_CONFIGURED'};
-  try{
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    const pdf = await makeTicketPdfBuffer(ticket);
-    const {data,error} = await resend.emails.send({
-      from: process.env.TICKET_EMAIL_FROM,
-      to: [ticket.email],
-      subject: 'Rangilo Raas 2026 — Your E-Ticket '+ticket.ticketId,
-      text: 'Your payment has been verified. Your Rangilo Raas 2026 e-ticket is attached.',
-      html: '<p>Your payment has been verified.</p><p>Your Rangilo Raas 2026 e-ticket is attached as a PDF.</p><p><b>Booking ID:</b> '+ticket.ticketId+'</p>',
-      attachments: [{
-        content: pdf.toString('base64'),
-        filename: ticket.ticketId+'.pdf',
-        contentType: 'application/pdf'
-      }]
-    });
-    if(error) throw new Error(error.message || JSON.stringify(error));
-    return {status:'SENT',id:data?.id||null};
-  }catch(e){
-    console.error('[EMAIL] Resend send failed:',e);
-    return {status:'FAILED',error:e.message||'Email send failed'};
-  }
-}
-
 app.post('/api/create-booking', async (req, res) => {
   try {
     const type = cleanType(req.body.type);
@@ -774,9 +748,7 @@ app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
       status: 'CONFIRMED',
       used: false
     });
-
-    const emailDelivery = await sendVerifiedTicketEmail(updated);
-    res.json({ success: true, ticket: updated, emailDelivery });
+    res.json({ success: true, ticket: updated });
   } catch (err) {
     console.error('verify-payment admin error:', err);
     res.status(500).json({ error: 'Could not verify payment.' });
@@ -825,6 +797,21 @@ app.post('/api/admin/cancel-booking/:ticketId', requireAdmin, async (req, res) =
   } catch (err) {
     console.error('admin cancel booking error:', err);
     res.status(500).json({ error: 'Could not cancel booking.' });
+  }
+});
+
+app.get('/api/admin/ticket/:ticketId/pdf', requireAdmin, async (req, res) => {
+  try {
+    const ticketId = String(req.params.ticketId || '').trim().toUpperCase();
+    const ticket = await getTicketById(ticketId);
+    if (!ticket) return res.status(404).send('Ticket not found.');
+    const pdf = await makeTicketPdfBuffer(ticket);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + ticket.ticketId + '.pdf"');
+    res.send(pdf);
+  } catch (err) {
+    console.error('admin ticket PDF error:', err);
+    res.status(500).send('Could not generate ticket PDF.');
   }
 });
 
