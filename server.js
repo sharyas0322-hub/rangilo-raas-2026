@@ -5,6 +5,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
 const QRCode = require('qrcode');
+const sgMail = require('@sendgrid/mail');
+const PDFDocument = require('pdfkit');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -288,6 +290,7 @@ function dbTicket(ticket) {
     received_amount_rupees: ticket.receivedAmountRupees ?? ticket.received_amount_rupees ?? null,
     name: ticket.name,
     mobile: ticket.mobile,
+    email: ticket.email || null,
     paymentId: ticket.paymentId || null,
     orderId: ticket.orderId || null,
     utr: ticket.utr || null,
@@ -319,6 +322,7 @@ function normalizeTicket(row) {
     qty: Number(row.qty),
     people: Number(row.people),
     amountRupees: Number(row.amountRupees),
+    email: row.email || null,
     receivedAmountRupees: row.receivedAmountRupees ?? row.received_amount_rupees ?? null,
     used: Boolean(row.used),
     scanHistory: Array.isArray(row.scanHistory) ? row.scanHistory : []
@@ -569,12 +573,37 @@ app.get('/api/payment-qr', (req, res) => {
   res.sendFile(BHARATPE_QR_FILE);
 });
 
+
+function makeTicketPdfBuffer(ticket){
+  return new Promise((resolve,reject)=>{
+    try{
+      const doc=new PDFDocument({size:'A4',margin:42}), chunks=[];
+      doc.on('data',d=>chunks.push(d)); doc.on('end',()=>resolve(Buffer.concat(chunks))); doc.on('error',reject);
+      doc.fontSize(26).fillColor('#8d1832').text('RANGILO RAAS',{align:'center'});
+      doc.fontSize(14).fillColor('#333').text('DANDIYA NIGHT 2026',{align:'center'}); doc.moveDown();
+      doc.fontSize(18).fillColor('#111').text('E-TICKET',{align:'center'}); doc.moveDown();
+      [['Booking / Ticket ID',ticket.ticketId],['Name',ticket.name],['Mobile',ticket.mobile],['Email',ticket.email],['Pass Type',ticket.type],['Entry For',String(ticket.people)+' Person(s)'],['Ticket Value','₹'+ticket.amountRupees],['Payment Status',ticket.paymentStatus||'VERIFIED'],['Event Date','17 October 2026'],['Time','5:00 PM – 11:00 PM'],['Venue','Aashirvadd Banquet Hall, Near Gai Ghat, Patna, Bihar'],['Gate','Gate No. 1 — Main Entry']].forEach(([k,v])=>{doc.fontSize(10).fillColor('#777').text(k);doc.fontSize(14).fillColor('#111').text(String(v||'-'));doc.moveDown(.35);});
+      doc.moveDown();doc.fontSize(11).fillColor('#8d1832').text('Keep this ticket and your Booking ID safe. Show the QR code from MY TICKET at the gate.');doc.end();
+    }catch(e){reject(e);}
+  });
+}
+async function sendVerifiedTicketEmail(ticket){
+  if(!process.env.SENDGRID_API_KEY || !process.env.TICKET_EMAIL_FROM) return {status:'NOT_CONFIGURED'};
+  try{
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    const pdf=await makeTicketPdfBuffer(ticket);
+    await sgMail.send({to:ticket.email,from:process.env.TICKET_EMAIL_FROM,subject:'Rangilo Raas 2026 — Your E-Ticket '+ticket.ticketId,text:'Your payment has been verified. Your Rangilo Raas 2026 e-ticket is attached.',html:'<p>Your payment has been verified.</p><p>Your Rangilo Raas 2026 e-ticket is attached as a PDF.</p><p><b>Booking ID:</b> '+ticket.ticketId+'</p>',attachments:[{content:pdf.toString('base64'),filename:ticket.ticketId+'.pdf',type:'application/pdf',disposition:'attachment'}]});
+    return {status:'SENT'};
+  }catch(e){console.error('ticket email error:',e);return {status:'FAILED'};}
+}
+
 app.post('/api/create-booking', async (req, res) => {
   try {
     const type = cleanType(req.body.type);
     const qty = Number(req.body.qty);
     const name = String(req.body.name || '').trim();
     const mobile = String(req.body.mobile || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
     const eventDate = String(req.body.eventDate || '').trim();
 
     if (!PRICES[type]) return res.status(400).json({ error: 'Invalid pass type.' });
@@ -582,6 +611,9 @@ app.post('/api/create-booking', async (req, res) => {
     if (!name) return res.status(400).json({ error: 'Name is required.' });
     if (!/^[6-9]\d{9}$/.test(mobile)) {
       return res.status(400).json({ error: 'Valid 10-digit mobile number is required.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email address is required.' });
     }
     if (!validEventDate(eventDate)) {
       return res.status(400).json({ error: 'Please select a valid event date.' });
@@ -610,6 +642,7 @@ app.post('/api/create-booking', async (req, res) => {
       receivedAmountRupees: null,
       name,
       mobile,
+      email,
       paymentId: null,
       orderId: null,
       utr: null,
@@ -727,7 +760,8 @@ app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
       used: false
     });
 
-    res.json({ success: true, ticket: updated });
+    const emailDelivery = await sendVerifiedTicketEmail(updated);
+    res.json({ success: true, ticket: updated, emailDelivery });
   } catch (err) {
     console.error('verify-payment admin error:', err);
     res.status(500).json({ error: 'Could not verify payment.' });
