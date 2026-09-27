@@ -527,7 +527,7 @@ async function recordScanAttempt(ticketId, scanTime, staff, result) {
 
 /* ---------------- App ---------------- */
 
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(PUBLIC_DIR));
 app.use('/scanner', express.static(SCANNER_DIR));
 app.use('/admin', express.static(ADMIN_DIR));
@@ -865,6 +865,19 @@ app.post('/api/submit-utr', async (req, res) => {
   } catch (err) {
     console.error('submit-utr error:', err);
     res.status(500).json({ error: 'Could not submit UTR.' });
+  }
+});
+
+app.get('/api/admin/payment-screenshot/:ticketId', requireAdmin, async (req, res) => {
+  try {
+    const ticketId = String(req.params.ticketId || '').trim().toUpperCase();
+    const ticket = await getTicketById(ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (!ticket.paymentScreenshot) return res.status(404).json({ error: 'Payment screenshot not uploaded.' });
+    res.json({ ticketId: ticket.ticketId, image: ticket.paymentScreenshot });
+  } catch (err) {
+    console.error('payment screenshot error:', err);
+    res.status(500).json({ error: 'Could not load payment screenshot.' });
   }
 });
 
