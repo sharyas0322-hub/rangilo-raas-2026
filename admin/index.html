@@ -57,12 +57,20 @@ async function shareTicketWhatsApp(t){
     const r=await fetch('/api/admin/ticket/'+encodeURIComponent(t.ticketId)+'/pdf',{credentials:'same-origin'});
     if(!r.ok) throw new Error('PDF generate nahi hua.');
     const blob=await r.blob();
+    const file=new File([blob],t.ticketId+'.pdf',{type:'application/pdf'});
+    const msg='🎟️ Rangilo Raas 2026 E-Ticket\nBooking ID: '+t.ticketId+'\nCustomer: '+t.name;
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({title:'Rangilo Raas 2026 E-Ticket',text:msg,files:[file]});
+      return;
+    }
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=t.ticketId+'.pdf';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),3000);
-    const msg='🎟️ Rangilo Raas 2026 E-Ticket\nBooking ID: '+t.ticketId+'\nPDF ticket download ho gaya hai. Isi WhatsApp chat me PDF attach karke send karein.';
     window.open('https://wa.me/91'+mobile+'?text='+encodeURIComponent(msg),'_blank');
-  }catch(e){alert(e.message||'Could not prepare WhatsApp share.')}
+  }catch(e){
+    if(e.name==='AbortError') return;
+    alert(e.message||'Could not prepare WhatsApp share.');
+  }
 }
 function openScanner(){window.open('/scanner/','_blank')}
 setInterval(()=>{if(!$('panel').classList.contains('hidden'))loadTickets()},15000);
