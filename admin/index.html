@@ -50,17 +50,19 @@ async function deleteTicket(id){const first=confirm('Delete booking '+id+' perma
 async function viewTicket(id){try{const j=await api('/api/admin/ticket/'+encodeURIComponent(id));const t=j.ticket;const qr=j.qrDataUrl?'<div class="ticket-qr"><img src="'+j.qrDataUrl+'" alt="Ticket QR"><b>ACTIVE ENTRY QR</b></div>':'<div class="status warn">⏳ Payment not verified — entry QR is not active.</div>'; $('viewBody').innerHTML='<div class="ticket-card"><div class="ticket-head"><div>SS EVENTS</div><h1>RANGILO RAAS</h1><b>DANDIYA NIGHT 2026</b><div style="margin-top:8px">17 OCTOBER 2026 • 5:00 PM – 11:00 PM</div></div><div class="ticket-main"><div class="info-grid"><div class="info"><b>Booking / Ticket ID</b><br>'+esc(t.ticketId)+'</div><div class="info"><b>Name</b><br>'+esc(t.name)+'</div><div class="info"><b>Mobile</b><br>'+esc(t.mobile)+'</div><div class="info"><b>Pass</b><br>'+esc(t.type)+' ×'+esc(t.qty)+'</div><div class="info"><b>People</b><br>'+esc(t.people)+'</div><div class="info"><b>Ticket Value</b><br>'+money(t.amountRupees)+'</div><div class="info"><b>Received</b><br><span class="money">'+(t.receivedAmountRupees!=null?money(t.receivedAmountRupees):'-')+'</span></div><div class="info"><b>UTR</b><br>'+esc(t.utr||'-')+'</div><div class="info"><b>Payment Status</b><br>'+esc(t.paymentStatus||'PENDING')+'</div><div class="info"><b>Verified At</b><br>'+esc(t.paymentVerifiedAt?india(t.paymentVerifiedAt):'-')+'</div><div class="info"><b>Entry Status</b><br>'+esc(t.used?'ENTERED':'NOT ENTERED')+'</div><div class="info"><b>Organised by</b><br>Shaurya Gupta</div></div>'+qr+'</div><div class="center" style="padding:12px"><b>Organised by Shaurya Gupta • WhatsApp: 9471494356</b></div></div>';$('viewModal').classList.remove('hidden')}catch(e){alert(e.message)}}
 function closeView(){$('viewModal').classList.add('hidden');$('viewBody').innerHTML=''}
 function openTicketPdf(id){window.open('/api/admin/ticket/'+encodeURIComponent(id)+'/pdf','_blank')}
-function shareTicket(id,method){
-  const base=location.origin+'/admin/';
-  const pdf=location.origin+'/api/admin/ticket/'+encodeURIComponent(id)+'/pdf';
-  if(method==='whatsapp'){
-    const msg='Rangilo Raas 2026 E-Ticket\\nBooking ID: '+id+'\\nOpen/View ticket: '+pdf;
-    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-  } else {
-    const subject='Rangilo Raas 2026 — E-Ticket '+id;
-    const body='Please find your Rangilo Raas 2026 e-ticket.\\nBooking ID: '+id+'\\nTicket PDF: '+pdf;
-    window.location.href='mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
-  }
+async function shareTicketWhatsApp(t){
+  try{
+    const mobile=String(t.mobile||'').replace(/\D/g,'');
+    if(mobile.length!==10) return alert('Customer mobile number valid nahi hai.');
+    const r=await fetch('/api/admin/ticket/'+encodeURIComponent(t.ticketId)+'/pdf',{credentials:'same-origin'});
+    if(!r.ok) throw new Error('PDF generate nahi hua.');
+    const blob=await r.blob();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=t.ticketId+'.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+    const msg='🎟️ Rangilo Raas 2026 E-Ticket\nBooking ID: '+t.ticketId+'\nPDF ticket download ho gaya hai. Isi WhatsApp chat me PDF attach karke send karein.';
+    window.open('https://wa.me/91'+mobile+'?text='+encodeURIComponent(msg),'_blank');
+  }catch(e){alert(e.message||'Could not prepare WhatsApp share.')}
 }
 function openScanner(){window.open('/scanner/','_blank')}
 setInterval(()=>{if(!$('panel').classList.contains('hidden'))loadTickets()},15000);
