@@ -23,9 +23,9 @@ const BHARATPE_UPI_NAME = 'MOTI DEVI';
 
 const PRICES = {
   'NORMAL SINGLE': 299,
-  'NORMAL COUPLE': 499,
-  'VIP SINGLE': 599,
-  'VIP COUPLE': 999
+  'NORMAL COUPLE': 549,
+  'GROUP PASS': 999,
+  'VIP COUPLE': 599
 };
 
 const DEFAULT_CONFIG = {
@@ -221,7 +221,8 @@ function requireAdmin(req, res, next) {
 }
 
 function getPeople(type, qty) {
-  return Number(type.includes('COUPLE') ? 2 : 1) * qty;
+  const perPass = type === 'GROUP PASS' ? 4 : (type.includes('COUPLE') ? 2 : 1);
+  return perPass * qty;
 }
 
 function validEventDate(date) {
