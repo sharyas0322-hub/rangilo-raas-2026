@@ -4,12 +4,15 @@
   "private": true,
   "description": "Rangilo Raas 2026 Razorpay test payment server",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "qrcode": "^1.5.4",
-    "razorpay": "^2.9.6"
+    "razorpay": "^2.9.6",
+    "pdfkit": "^0.17.2"
   }
 }
