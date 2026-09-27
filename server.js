@@ -901,6 +901,20 @@ app.get('/api/admin/pending-payments', requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/admin/awaiting-payment', requireAdmin, async (req, res) => {
+  try {
+    const tickets = await getAllTickets();
+    res.json({
+      tickets: tickets
+        .filter(t => t.paymentStatus === 'PENDING' && !t.utr)
+        .map(t => ({ ...t, signature: undefined }))
+    });
+  } catch (err) {
+    console.error('awaiting-payment error:', err);
+    res.status(500).json({ error: 'Could not load bookings awaiting payment.' });
+  }
+});
+
 app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
   try {
     const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
