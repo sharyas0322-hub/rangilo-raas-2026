@@ -5,7 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
 const QRCode = require('qrcode');
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 const PDFDocument = require('pdfkit');
 
 const app = express();
@@ -588,13 +588,28 @@ function makeTicketPdfBuffer(ticket){
   });
 }
 async function sendVerifiedTicketEmail(ticket){
-  if(!process.env.SENDGRID_API_KEY || !process.env.TICKET_EMAIL_FROM) return {status:'NOT_CONFIGURED'};
+  if(!process.env.RESEND_API_KEY || !process.env.TICKET_EMAIL_FROM || !ticket.email) return {status:'NOT_CONFIGURED'};
   try{
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-    const pdf=await makeTicketPdfBuffer(ticket);
-    await sgMail.send({to:ticket.email,from:process.env.TICKET_EMAIL_FROM,subject:'Rangilo Raas 2026 — Your E-Ticket '+ticket.ticketId,text:'Your payment has been verified. Your Rangilo Raas 2026 e-ticket is attached.',html:'<p>Your payment has been verified.</p><p>Your Rangilo Raas 2026 e-ticket is attached as a PDF.</p><p><b>Booking ID:</b> '+ticket.ticketId+'</p>',attachments:[{content:pdf.toString('base64'),filename:ticket.ticketId+'.pdf',type:'application/pdf',disposition:'attachment'}]});
-    return {status:'SENT'};
-  }catch(e){console.error('ticket email error:',e);return {status:'FAILED'};}
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const pdf = await makeTicketPdfBuffer(ticket);
+    const {data,error} = await resend.emails.send({
+      from: process.env.TICKET_EMAIL_FROM,
+      to: [ticket.email],
+      subject: 'Rangilo Raas 2026 — Your E-Ticket '+ticket.ticketId,
+      text: 'Your payment has been verified. Your Rangilo Raas 2026 e-ticket is attached.',
+      html: '<p>Your payment has been verified.</p><p>Your Rangilo Raas 2026 e-ticket is attached as a PDF.</p><p><b>Booking ID:</b> '+ticket.ticketId+'</p>',
+      attachments: [{
+        content: pdf.toString('base64'),
+        filename: ticket.ticketId+'.pdf',
+        contentType: 'application/pdf'
+      }]
+    });
+    if(error) throw new Error(error.message || JSON.stringify(error));
+    return {status:'SENT',id:data?.id||null};
+  }catch(e){
+    console.error('[EMAIL] Resend send failed:',e);
+    return {status:'FAILED',error:e.message||'Email send failed'};
+  }
 }
 
 app.post('/api/create-booking', async (req, res) => {
