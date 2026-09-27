@@ -885,11 +885,10 @@ app.post('/api/submit-utr', async (req, res) => {
     if (!ticketId || !/^[6-9]\d{9}$/.test(mobile)) {
       return res.status(400).json({ error: 'Booking ID and valid mobile are required.' });
     }
-    if (!/^[A-Za-z0-9_-]{6,40}$/.test(utr)) {
-      return res.status(400).json({ error: 'Enter a valid UTR / transaction reference.' });
-    }
-    if (!/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(paymentScreenshot) || paymentScreenshot.length > 1800000) {
-      return res.status(400).json({ error: 'Please upload a valid payment screenshot (max about 1.3 MB after compression).' });
+    const hasUtr = /^[A-Za-z0-9_-]{6,40}$/.test(utr);
+    const hasScreenshot = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(paymentScreenshot) && paymentScreenshot.length <= 1800000;
+    if (!hasUtr && !hasScreenshot) {
+      return res.status(400).json({ error: 'Submit either a valid UTR / transaction reference or a payment screenshot.' });
     }
 
     const ticket = await getTicketById(ticketId);
@@ -901,7 +900,7 @@ app.post('/api/submit-utr', async (req, res) => {
       return res.json({ success: true, status: 'CONFIRMED', ticket });
     }
 
-    const duplicate = await getTicketByUtr(utr);
+    const duplicate = hasUtr ? await getTicketByUtr(utr) : null;
     if (duplicate && duplicate.ticketId !== ticketId) {
       return res.status(409).json({ error: 'This UTR has already been submitted for another booking.' });
     }
