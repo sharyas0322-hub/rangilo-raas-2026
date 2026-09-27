@@ -948,6 +948,42 @@ app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/admin/backup-verify', requireAdmin, async (req, res) => {
+  try {
+    const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
+    if (!ticketId) return res.status(400).json({ error: 'Enter the Booking / Ticket ID.' });
+
+    const ticket = await getTicketById(ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found. Please check the Ticket ID.' });
+
+    if (ticket.paymentStatus === 'VERIFIED' && ticket.status === 'CONFIRMED') {
+      return res.json({ success: true, alreadyVerified: true, ticket });
+    }
+
+    const updated = await updateTicket(ticketId, {
+      received_amount_rupees: Number(ticket.amountRupees) || 0,
+      payment_status: 'VERIFIED',
+      payment_verified_at: isoNow(),
+      payment_rejected_at: null,
+      payment_rejection_reason: null,
+      status: 'CONFIRMED',
+      used: false
+    });
+
+    if (!updated) return res.status(500).json({ error: 'Could not update the ticket.' });
+
+    res.json({
+      success: true,
+      backup: true,
+      message: 'Ticket manually verified by admin backup.',
+      ticket: updated
+    });
+  } catch (err) {
+    console.error('backup verify admin error:', err);
+    res.status(500).json({ error: 'Could not backup-verify ticket.' });
+  }
+});
+
 app.post('/api/admin/reject-payment', requireAdmin, async (req, res) => {
   try {
     const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
