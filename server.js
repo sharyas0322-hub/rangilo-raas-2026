@@ -383,6 +383,26 @@ async function getTicketByMobile(mobile) {
   return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
 }
 
+async function getTicketByMobileAndEmail(mobile, email) {
+  const cleanMobile = String(mobile || '').trim();
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanMobile || !cleanEmail) return null;
+
+  if (!SUPABASE_ENABLED) {
+    const tickets = readJson(TICKETS_FILE, []);
+    return tickets
+      .filter(t => String(t.mobile || '').trim() === cleanMobile &&
+        String(t.email || '').trim().toLowerCase() === cleanEmail)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null;
+  }
+
+  const rows = await supabaseRequest(
+    `tickets?mobile=eq.${encodeURIComponent(cleanMobile)}&email=eq.${encodeURIComponent(cleanEmail)}&select=*&order=createdAt.desc&limit=1`,
+    { method: 'GET' }
+  );
+  return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
+}
+
 async function getTicketByUtr(utr) {
   const clean = String(utr || '').trim();
   if (!clean) return null;
@@ -824,6 +844,34 @@ app.post('/api/create-booking', async (req, res) => {
   } catch (err) {
     console.error('create-booking error:', err);
     res.status(500).json({ error: 'Could not create booking.' });
+  }
+});
+
+app.post('/api/retrieve-booking', async (req, res) => {
+  try {
+    const mobile = String(req.body.mobile || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+
+    if (!/^[6-9]\d{9}$/.test(mobile) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Enter the same 10-digit mobile number and email used during booking.' });
+    }
+
+    const ticket = await getTicketByMobileAndEmail(mobile, email);
+    if (!ticket) {
+      return res.status(404).json({ error: 'No booking found for this mobile number and email.' });
+    }
+
+    const safeTicket = { ...ticket };
+    delete safeTicket.signature;
+
+    res.json({
+      success: true,
+      ticket: safeTicket,
+      resumePayment: ticket.paymentStatus !== 'VERIFIED' && ticket.status === 'PENDING_PAYMENT'
+    });
+  } catch (err) {
+    console.error('retrieve-booking error:', err);
+    res.status(500).json({ error: 'Could not retrieve the booking.' });
   }
 });
 
