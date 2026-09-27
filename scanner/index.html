@@ -1,15 +1,27 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rangilo Raas - Gate Scanner</title>
 <style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#080c20;color:#fff;padding:18px}.wrap{max-width:600px;margin:auto}.box{background:#111735;border-radius:18px;padding:18px;box-shadow:0 10px 40px #0005}.state{padding:13px;border-radius:12px;background:#ffffff10;margin:12px 0;line-height:1.5}.active{background:#0b6b3a}.inactive{background:#6d5200}.ok{background:#0b6b3a}.bad{background:#7b1e2b}.warn{background:#6d5200}.small{opacity:.85;font-size:13px;line-height:1.45}input,button{width:100%;padding:12px;margin-top:10px;border-radius:9px;border:0;font-size:16px}input{background:#070b1d;color:#fff;border:1px solid #ffffff22}button{background:#ffd333;color:#111;font-weight:bold;cursor:pointer}.divider{display:flex;align-items:center;gap:10px;margin:18px 0;color:#aaa}.divider:before,.divider:after{content:"";height:1px;background:#ffffff22;flex:1}.manual{padding:14px;background:#ffffff08;border-radius:12px}.history{margin-top:14px;border-top:1px solid #ffffff22;padding-top:12px}.history div{padding:8px 0;border-bottom:1px solid #ffffff12;font-size:13px}#reader{margin-top:12px;overflow:hidden;border-radius:12px}
-.scan-overlay{display:none;position:fixed;inset:0;background:#000b;z-index:1000;align-items:center;justify-content:center;padding:16px}
+.scan-overlay{display:none;position:fixed;inset:0;background:#02030aee;z-index:1000;align-items:center;justify-content:center;padding:12px}
 .scan-overlay.show{display:flex}
-.scan-card{width:min(520px,100%);max-height:92vh;overflow:auto;background:linear-gradient(145deg,#111a3c,#070b1d);border:2px solid #ffd333;border-radius:24px;box-shadow:0 25px 100px #000;overflow:hidden}
-.scan-card-head{padding:22px;text-align:center;background:radial-gradient(circle at 50% 0,#472a80,#0a1230)}
-.scan-icon{font-size:42px}.scan-title{font-size:27px;font-weight:900;color:#ffd333;margin-top:5px}.scan-sub{opacity:.85;margin-top:5px}
-.scan-details{padding:18px}.scan-detail{display:flex;justify-content:space-between;gap:15px;padding:11px 0;border-bottom:1px dashed #ffffff22}.scan-detail b:first-child{color:#ffd333}.scan-detail b:last-child{text-align:right}
-.scan-status{margin:0 18px 16px;padding:13px;border-radius:12px;text-align:center;font-weight:900;background:#0b6b3a}
-.scan-actions{padding:0 18px 20px}.allow-entry{width:100%;padding:16px;border:0;border-radius:12px;background:#20bd70;color:#fff;font-size:18px;font-weight:900;cursor:pointer}.allow-entry:disabled{opacity:.6}.next-scan{width:100%;padding:12px;border:1px solid #ffffff22;border-radius:12px;background:#ffffff0b;color:#fff;font-size:15px;font-weight:800;cursor:pointer;margin-top:10px}
-.scan-card.warning{border-color:#ffd333}.scan-card.danger{border-color:#ff5c70}.scan-status.danger{background:#7b1e2b}.scan-status.warning{background:#6d5200}
-@media(max-width:520px){.scan-card{border-radius:18px}.scan-title{font-size:23px}.scan-details{padding:14px}.scan-detail{font-size:14px}} .camera-note{margin-top:8px;font-size:12px;color:#bbb}.testbox{display:none;margin-top:12px;padding:12px;border:1px dashed #ffd33355;border-radius:12px;background:#ffd33308}.testbox button{background:#6ee7b7}.testbox.off button{background:#ffd333}</style>
+.scan-card{width:min(560px,100%);max-height:94vh;overflow:auto;background:#0b1024;border:3px solid #ffd333;border-radius:26px;box-shadow:0 25px 100px #000;overflow:hidden}
+.scan-card-head{padding:28px 20px;text-align:center;background:linear-gradient(145deg,#17204a,#080d20)}
+.scan-icon{font-size:64px;line-height:1}.scan-title{font-size:30px;font-weight:1000;color:#fff;margin-top:10px;letter-spacing:.5px}.scan-sub{opacity:.9;margin-top:6px;font-size:14px}
+.scan-details{padding:18px 20px;background:#0b1024}.scan-detail{display:flex;justify-content:space-between;gap:18px;padding:12px 0;border-bottom:1px solid #ffffff18;font-size:15px}.scan-detail b:first-child{color:#ffd333}.scan-detail b:last-child{text-align:right;color:#fff}
+.scan-status{margin:0 20px 18px;padding:16px;border-radius:12px;text-align:center;font-weight:1000;font-size:18px;background:#0b6b3a}
+.scan-actions{padding:0 20px 22px}.allow-entry{width:100%;padding:18px;border:0;border-radius:13px;background:#20bd70;color:#fff;font-size:20px;font-weight:1000;cursor:pointer;box-shadow:0 8px 25px #20bd7055}.allow-entry:disabled{opacity:.6}.next-scan{width:100%;padding:14px;border:1px solid #ffffff22;border-radius:12px;background:#ffffff0b;color:#fff;font-size:16px;font-weight:900;cursor:pointer;margin-top:10px}
+.scan-card.warning{border-color:#ffd333}
+.scan-card.danger{border-color:#ff334f;background:#21060b;box-shadow:0 0 0 2px #ff334f33,0 25px 100px #000}
+.scan-card.danger .scan-card-head{background:linear-gradient(145deg,#a30d25,#3b0710)}
+.scan-card.danger .scan-details{background:#21060b}
+.scan-card.danger .scan-detail{border-color:#ffb0bb33}
+.scan-card.danger .scan-detail b:first-child{color:#ff8a9a}
+.scan-card.danger .scan-status{background:#c51632;color:#fff;border:1px solid #ff8190}
+.scan-card.success{border-color:#20e080;background:#061b12;box-shadow:0 0 0 2px #20e08033,0 25px 100px #000}
+.scan-card.success .scan-card-head{background:linear-gradient(145deg,#08783f,#06301e)}
+.scan-card.success .scan-details{background:#061b12}
+.scan-card.success .scan-detail{border-color:#8dffc533}
+.scan-card.success .scan-detail b:first-child{color:#74f5ad}
+.scan-card.success .scan-status{background:#0a9f58;color:#fff;border:1px solid #62ffad}
+@media(max-width:520px){.scan-card{border-radius:20px}.scan-title{font-size:25px}.scan-details{padding:14px 16px}.scan-detail{font-size:14px}} .camera-note{margin-top:8px;font-size:12px;color:#bbb}.testbox{display:none;margin-top:12px;padding:12px;border:1px dashed #ffd33355;border-radius:12px;background:#ffd33308}.testbox button{background:#6ee7b7}.testbox.off button{background:#ffd333}</style>
 <script src="https://unpkg.com/html5-qrcode" defer></script></head><body><div class="wrap"><div class="box"><h2>🎟️ Rangilo Raas Gate Scanner</h2><div id="releaseState" class="state">Checking scanner status...</div><p class="small"><b>Camera is the primary method.</b> Point the gate phone camera at the customer's QR. If camera access is unavailable, use the Ticket ID verification below.</p><label>Staff name</label><input id="staff" placeholder="Staff name" value="Gate Staff">
 <div id="reader"></div><div id="cameraStatus" class="camera-note">Starting camera…</div>
 <div id="localTestBox" class="testbox">
@@ -105,8 +117,8 @@ window.addEventListener('load',async()=>{
      document.getElementById('allowEntryBtn').onclick=allowPendingEntry;
      document.getElementById('nextScanBtn').onclick=closeScanCard;
    } else if(j.status==='ALREADY_USED'){
-     openScanCard('ENTRY ALREADY USED','This ticket cannot be used again.','⚠️',j.ticket,'warning');
-     document.getElementById('scanStatus').textContent='2ND ENTRY NOT ALLOWED';
+     openScanCard('ENTRY ALREADY USED','This ticket cannot be used again.','⛔',j.ticket,'danger');
+     document.getElementById('scanStatus').textContent='⛔ ENTRY NOT ALLOWED • 2ND ENTRY BLOCKED';
      document.getElementById('scanActions').innerHTML=
        '<button class="next-scan" id="usedNextBtn">SCAN NEXT TICKET</button>';
      document.getElementById('usedNextBtn').onclick=closeScanCard;
@@ -136,8 +148,8 @@ window.addEventListener('load',async()=>{
      const j=await r.json();
      if(j.status==='VALID'){
        pendingApproval=null;
-       openScanCard('ENTRY ALLOWED','Entry successfully recorded for this customer.','✅',j.ticket,'ok');
-       document.getElementById('scanStatus').textContent='ENTRY DONE • TICKET USED';
+       openScanCard('ENTRY ALLOWED','Entry successfully recorded for this customer.','✅',j.ticket,'success');
+       document.getElementById('scanStatus').textContent='✅ ENTRY DONE • TICKET USED';
        document.getElementById('scanActions').innerHTML=
          '<button class="next-scan" id="successNextBtn">SCAN NEXT TICKET</button>';
        document.getElementById('successNextBtn').onclick=closeScanCard;
