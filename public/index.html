@@ -65,21 +65,44 @@ async function showPayment(){
       <div style="background:#fff;border-radius:14px;padding:12px;text-align:center"><img src="/api/payment-qr" alt="BharatPe QR" style="width:min(300px,100%);display:block;margin:auto"></div>
       <p class="note">Payment ke baad apna UTR / transaction reference neeche enter karein.</p>
       <input id="utrInput" placeholder="Enter UTR / Transaction ID" maxlength="40" style="color:#fff;background:#050816">
-      <button class="paid" id="utrBtn" onclick="submitUtr()">SUBMIT UTR</button>
+      <label style="margin-top:14px">Payment Screenshot</label>
+      <input id="paymentScreenshot" type="file" accept="image/jpeg,image/png,image/webp" style="padding:10px;background:#050816">
+      <p class="note">Payment karne ke baad successful payment ka screenshot upload karein.</p>
+      <button class="paid" id="utrBtn" onclick="submitUtr()">SUBMIT UTR & SCREENSHOT</button>
       <p id="utrStatus" class="note"></p>`;
     document.getElementById('payment').classList.remove('hidden');
     status.textContent='';
   }catch(e){status.textContent=e.message;status.style.color='#ffb3b3';}
 }
 
+async function compressPaymentScreenshot(file){
+  const bitmap=await createImageBitmap(file);
+  const maxSide=1400;
+  const scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+  canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+  bitmap.close();
+  let quality=.82;
+  let data=canvas.toDataURL('image/jpeg',quality);
+  while(data.length>1700000 && quality>.45){quality-=.08;data=canvas.toDataURL('image/jpeg',quality);}
+  return data;
+}
+
 async function submitUtr(){
   if(!currentTicket)return;
   const utr=document.getElementById('utrInput').value.trim();
+  const file=document.getElementById('paymentScreenshot')?.files?.[0];
   const st=document.getElementById('utrStatus');
   if(!/^[A-Za-z0-9_-]{6,40}$/.test(utr)){st.textContent='Valid UTR / transaction reference enter karo.';return;}
-  document.getElementById('utrBtn').disabled=true; st.textContent='UTR submit ho raha hai...';
+  if(!file){st.textContent='Payment ka screenshot upload karo.';return;}
+  if(file.size>3*1024*1024){st.textContent='Screenshot 3 MB se chhota hona chahiye.';return;}
+  document.getElementById('utrBtn').disabled=true; st.textContent='Screenshot compress karke UTR submit ho raha hai...';
   try{
-    const r=await fetch('/api/submit-utr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:currentTicket.ticketId,mobile:currentTicket.mobile,utr})});
+    const paymentScreenshot=await compressPaymentScreenshot(file);
+    const r=await fetch('/api/submit-utr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:currentTicket.ticketId,mobile:currentTicket.mobile,utr,paymentScreenshot})});
     const data=await r.json(); if(!r.ok)throw new Error(data.error||'Could not submit UTR.');
     st.innerHTML='<div class="status success"><b>✅ UTR submitted successfully.</b><br><br><b>Payment verification admin karega.</b><br>Verification hone tak apna <b>Booking ID save rakhein:</b><br><strong>'+escapeHtml(currentTicket.ticketId)+'</strong><br><br>⏱️ <b>5 minutes baad MY TICKET me Booking ID + mobile number se check again karein.</b><br>Payment verified hone ke baad aapka ticket QR automatically active ho jayega.</div>';
     document.getElementById('utrInput').disabled=true;
