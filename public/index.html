@@ -64,11 +64,11 @@ async function showPayment(){
       <p style="text-align:center;font-weight:800">BharatPe QR scan karke exact amount pay karein.</p>
       <div style="background:#fff;border-radius:14px;padding:12px;text-align:center"><img src="/api/payment-qr" alt="BharatPe QR" style="width:min(300px,100%);display:block;margin:auto"></div>
       <p class="note">Payment ke baad apna UTR / transaction reference neeche enter karein.</p>
-      <input id="utrInput" placeholder="Enter UTR / Transaction ID" maxlength="40" style="color:#fff;background:#050816">
+      <input id="utrInput" placeholder="Enter UTR / Transaction ID" maxlength="40" required oninput="checkPaymentSubmitReady()" style="color:#fff;background:#050816">
       <label style="margin-top:14px">Payment Screenshot</label>
-      <input id="paymentScreenshot" type="file" accept="image/jpeg,image/png,image/webp" style="padding:10px;background:#050816">
+      <input id="paymentScreenshot" type="file" accept="image/jpeg,image/png,image/webp" required onchange="checkPaymentSubmitReady()" style="padding:10px;background:#050816">
       <p class="note">Payment karne ke baad successful payment ka screenshot upload karein.</p>
-      <button class="paid" id="utrBtn" onclick="submitUtr()">SUBMIT UTR & SCREENSHOT</button>
+      <button class="paid" id="utrBtn" onclick="submitUtr()" disabled>SUBMIT UTR & SCREENSHOT</button>
       <p id="utrStatus" class="note"></p>`;
     document.getElementById('payment').classList.remove('hidden');
     status.textContent='';
@@ -91,6 +91,7 @@ async function compressPaymentScreenshot(file){
   return data;
 }
 
+function checkPaymentSubmitReady(){const utr=document.getElementById('utrInput')?.value.trim()||'';const file=document.getElementById('paymentScreenshot')?.files?.[0];const btn=document.getElementById('utrBtn');if(btn)btn.disabled=!/^[A-Za-z0-9_-]{6,40}$/.test(utr)||!file;}
 async function submitUtr(){
   if(!currentTicket)return;
   const utr=document.getElementById('utrInput').value.trim();
