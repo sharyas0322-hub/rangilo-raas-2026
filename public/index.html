@@ -203,5 +203,14 @@ function showTicket(t,qr,config){
   const qrHtml=verified ? '<div class="qrbox"><img src="'+qrUrl+'" alt="Ticket QR" loading="eager" onerror="this.onerror=null;this.src=\'/api/ticket/'+encodeURIComponent(t.ticketId)+'/qr?mobile='+encodeURIComponent(t.mobile)+'&retry=1\';"><div class="scan-label">SCAN AT GATE • ONE-TIME ENTRY</div></div>' : '<div class="status warning"><b>⏳ Payment verification pending</b><br>QR ticket active after admin verification.</div>';
   document.getElementById('ticketBody').innerHTML='<div class="ticket-head"><div class="brand">SS EVENTS</div><h1>RANGILO RAAS</h1><div class="event">DANDIYA NIGHT 2026</div><div class="ticket-date">'+formatDate(t.eventDate)+' • 5:00 PM – 11:00 PM</div></div><div class="ticket-main"><div class="ticket-grid"><div class="ticket-info"><p><strong>Booking / Ticket ID</strong><br>'+escapeHtml(t.ticketId)+'</p><p><strong>Name</strong><br>'+escapeHtml(t.name)+'</p><p><strong>Mobile</strong><br>'+escapeHtml(t.mobile)+'</p><p><strong>Pass Type</strong><br><span class="pass-pill">'+escapeHtml(t.type)+'</span></p><p><strong>Entry For</strong><br>'+t.people+' Person(s)</p><p><strong>Ticket Value</strong><br>₹'+t.amountRupees+'</p><p><strong>Payment Status</strong><br>'+escapeHtml(t.paymentStatus||'PENDING')+'</p></div>'+qrHtml+'</div></div><div class="venuebar"><div class="venue">📍 Aashirvadd Banquet Hall</div><div>Near Gai Ghat, Patna, Bihar</div><div class="gate">🚪 GATE NO. 1 — MAIN ENTRY</div></div><div class="ticket-foot">Garba • Dandiya • Live Music & DJ • Selfie Zones • Food Stalls & Refreshments<br><b>ONE-TIME TICKET • SCAN AT GATE</b></div>';
   document.getElementById('ticket').classList.add('show');
+  const ticketModal=document.getElementById('ticket');
+  if(!document.getElementById('ticketActions')) ticketModal.querySelector('.box')?.insertAdjacentHTML('beforeend','<div id="ticketActions" class="ticket-actions"><button class="action" onclick="printMyTicket()">🖨️ PRINT TICKET</button><button class="paid" onclick="saveMyTicket()">💾 SAVE TICKET</button></div>');
+}
+function printMyTicket(){window.print()}
+function saveMyTicket(){
+  const t=currentTicket;
+  if(!t)return;
+  const text='RANGILO RAAS — DANDIYA NIGHT 2026\n\nBooking / Ticket ID: '+t.ticketId+'\nName: '+t.name+'\nPass: '+t.type+'\nEntry: '+t.people+' Person(s)\nTicket Value: ₹'+t.amountRupees+'\nPayment Status: '+(t.paymentStatus||'PENDING')+'\n\n17 October 2026 | 5:00 PM – 11:00 PM\nAashirvadd Banquet Hall, Near Gai Ghat, Patna, Bihar';
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(t.ticketId||'rangilo-raas-ticket')+'.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 </script></body></html>
