@@ -1132,7 +1132,8 @@ app.get('/api/ticket/:ticketId/qr', async (req, res) => {
     if (!ticket) return res.status(404).send('Ticket not found.');
 
     const mobile = String(req.query.mobile || '').trim();
-    if (!mobile || mobile !== ticket.mobile) {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if ((!mobile && !email) || (mobile && mobile !== ticket.mobile) || (email && email !== String(ticket.email || '').trim().toLowerCase())) {
       return res.status(401).send('Unauthorized.');
     }
 
@@ -1172,10 +1173,10 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     }
 
     const mobile = String(req.query.mobile || '').trim();
-
-    if (!mobile || mobile !== ticket.mobile) {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if ((!mobile && !email) || (mobile && mobile !== ticket.mobile) || (email && email !== String(ticket.email || '').trim().toLowerCase())) {
       return res.status(401).json({
-        error: 'Booking ID and registered mobile number do not match.'
+        error: 'Enter the registered email or mobile number.'
       });
     }
 
