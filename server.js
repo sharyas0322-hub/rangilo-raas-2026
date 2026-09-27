@@ -293,6 +293,7 @@ function dbTicket(ticket) {
     paymentId: ticket.paymentId || null,
     orderId: ticket.orderId || null,
     utr: ticket.utr || null,
+    payment_screenshot: ticket.paymentScreenshot || ticket.payment_screenshot || null,
     payment_status: ticket.paymentStatus || ticket.payment_status || 'PENDING',
     payment_submitted_at: ticket.paymentSubmittedAt || ticket.payment_submitted_at || null,
     payment_verified_at: ticket.paymentVerifiedAt || ticket.payment_verified_at || null,
@@ -322,6 +323,7 @@ function normalizeTicket(row) {
     people: Number(row.people),
     amountRupees: Number(row.amountRupees),
     email: row.email || null,
+    paymentScreenshot: row.paymentScreenshot || row.payment_screenshot || null,
     receivedAmountRupees: row.receivedAmountRupees ?? row.received_amount_rupees ?? null,
     used: Boolean(row.used),
     scanHistory: Array.isArray(row.scanHistory) ? row.scanHistory : []
@@ -829,12 +831,16 @@ app.post('/api/submit-utr', async (req, res) => {
     const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
     const mobile = String(req.body.mobile || '').trim();
     const utr = String(req.body.utr || '').trim();
+    const paymentScreenshot = String(req.body.paymentScreenshot || '').trim();
 
     if (!ticketId || !/^[6-9]\d{9}$/.test(mobile)) {
       return res.status(400).json({ error: 'Booking ID and valid mobile are required.' });
     }
     if (!/^[A-Za-z0-9_-]{6,40}$/.test(utr)) {
       return res.status(400).json({ error: 'Enter a valid UTR / transaction reference.' });
+    }
+    if (!/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(paymentScreenshot) || paymentScreenshot.length > 1800000) {
+      return res.status(400).json({ error: 'Please upload a valid payment screenshot (max about 1.3 MB after compression).' });
     }
 
     const ticket = await getTicketById(ticketId);
@@ -858,6 +864,7 @@ app.post('/api/submit-utr', async (req, res) => {
       payment_verified_at: null,
       payment_rejected_at: null,
       payment_rejection_reason: null,
+      payment_screenshot: paymentScreenshot,
       status: 'PENDING_PAYMENT'
     });
 
