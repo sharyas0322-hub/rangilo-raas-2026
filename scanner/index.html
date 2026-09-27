@@ -32,7 +32,7 @@
 </div>
 <div class="divider">OR</div>
 <div class="manual"><b>🔎 Ticket ID Verification (Camera Backup)</b><div class="small" style="margin-top:6px">Use only when the QR camera cannot be used. Enter the exact Ticket ID printed on the customer's ticket.</div><input id="manualTicketId" autocomplete="off" autocapitalize="characters" placeholder="e.g. RR26-XXXXXXXX-XXXXXX"><button id="manualBtn">VERIFY TICKET ID</button></div>
-<div class="divider">QR IMAGE BACKUP</div><label class="small">If camera is unavailable, choose a saved QR image:</label><input id="qrFile" type="file" accept="image/*"><div id="result"></div></div></div>
+<div id="result"></div></div></div>
 <div id="scanOverlay" class="scan-overlay" aria-hidden="true">
   <div id="scanCard" class="scan-card">
     <div class="scan-card-head">
@@ -172,7 +172,7 @@ window.addEventListener('load',async()=>{
  async function manualVerify(){if(busy)return;const ticketId=document.getElementById('manualTicketId').value.trim();if(!ticketId){show('bad','TICKET ID REQUIRED','Enter the Ticket ID printed on the ticket.');return}busy=true;try{const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','SERVER ERROR','Could not verify Ticket ID. Check the server connection.')}finally{busy=false}}
  document.getElementById('manualBtn').addEventListener('click',manualVerify);document.getElementById('manualTicketId').addEventListener('keydown',e=>{if(e.key==='Enter')manualVerify()});
  function start(){if(!window.Html5Qrcode){cameraStatus.textContent='Camera library is still loading…';setTimeout(start,500);return}try{qr=new Html5Qrcode('reader');qr.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:250}},submitQrText).then(()=>{cameraStatus.textContent='📷 Camera active — point it at the QR code.'}).catch(e=>{cameraStatus.textContent='⚠️ Camera unavailable: '+(e?.message||String(e)||'unknown camera error')+'. Use Ticket ID Verification below.'})}catch(e){cameraStatus.textContent='⚠️ Camera unavailable: '+(e?.message||String(e)||'unknown camera error')+'. Use Ticket ID Verification below.'}}
- document.getElementById('qrFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f||!window.Html5Qrcode)return;try{busy=true;const reader=new Html5Qrcode('reader');const text=await reader.scanFile(f,true);await reader.clear();await submitQrText(text)}catch(err){show('bad','QR IMAGE ERROR',err.message||'Could not read QR image.')}finally{busy=false;e.target.value=''}});
+
  try{const r=await fetch('/api/config');const c=await r.json();active=true;state.className='state active';state.innerHTML='🟢 <b>SCANNER ACTIVE</b><br>Venue: '+esc(c.venueName)+'<br>🚪 Gate No. 1 — Main Entry';start()}catch(e){state.className='state bad';state.textContent='Could not connect to server.';cameraStatus.textContent='Server connection unavailable.'}
 });
 </script></body></html>
