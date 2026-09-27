@@ -573,17 +573,176 @@ app.get('/api/payment-qr', (req, res) => {
 });
 
 
-function makeTicketPdfBuffer(ticket){
-  return new Promise((resolve,reject)=>{
-    try{
-      const doc=new PDFDocument({size:'A4',margin:42}), chunks=[];
-      doc.on('data',d=>chunks.push(d)); doc.on('end',()=>resolve(Buffer.concat(chunks))); doc.on('error',reject);
-      doc.fontSize(26).fillColor('#8d1832').text('RANGILO RAAS',{align:'center'});
-      doc.fontSize(14).fillColor('#333').text('DANDIYA NIGHT 2026',{align:'center'}); doc.moveDown();
-      doc.fontSize(18).fillColor('#111').text('E-TICKET',{align:'center'}); doc.moveDown();
-      [['Booking / Ticket ID',ticket.ticketId],['Name',ticket.name],['Mobile',ticket.mobile],['Email',ticket.email],['Pass Type',ticket.type],['Entry For',String(ticket.people)+' Person(s)'],['Ticket Value','₹'+ticket.amountRupees],['Payment Status',ticket.paymentStatus||'VERIFIED'],['Event Date','17 October 2026'],['Time','5:00 PM – 11:00 PM'],['Venue','Aashirvadd Banquet Hall, Near Gai Ghat, Patna, Bihar'],['Gate','Gate No. 1 — Main Entry']].forEach(([k,v])=>{doc.fontSize(10).fillColor('#777').text(k);doc.fontSize(14).fillColor('#111').text(String(v||'-'));doc.moveDown(.35);});
-      doc.moveDown();doc.fontSize(11).fillColor('#8d1832').text('Keep this ticket and your Booking ID safe. Show the QR code from MY TICKET at the gate.');doc.end();
-    }catch(e){reject(e);}
+async function makeTicketPdfBuffer(ticket) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 0,
+        info: {
+          Title: 'Rangilo Raas 2026 E-Ticket',
+          Author: 'Rangilo Raas'
+        }
+      });
+      const chunks = [];
+      doc.on('data', d => chunks.push(d));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const W = 595.28;
+      const H = 841.89;
+      const M = 36;
+      const maroon = '#8d1832';
+      const dark = '#241820';
+      const muted = '#6f6570';
+      const gold = '#d6a33a';
+      const light = '#fbf7f3';
+      const pale = '#f4e8df';
+      const green = '#16734a';
+
+      // Background
+      doc.rect(0, 0, W, H).fill('#ffffff');
+
+      // Festive top header
+      doc.rect(0, 0, W, 118).fill(maroon);
+      doc.fillColor('#ffffff')
+        .font('Helvetica-Bold')
+        .fontSize(27)
+        .text('RANGILO RAAS', 0, 25, { width: W, align: 'center' });
+      doc.font('Helvetica')
+        .fontSize(12)
+        .fillColor('#f8e8cf')
+        .text('DANDIYA NIGHT 2026  •  PATNA', 0, 61, { width: W, align: 'center' });
+
+      // Gold divider / festive dots
+      doc.rect(165, 87, 265, 2).fill(gold);
+      [175, 210, 245, 350, 385, 420].forEach(x => {
+        doc.circle(x, 88, 3).fill(gold);
+      });
+
+      // Ticket badge
+      doc.roundedRect(M, 102, W - 2 * M, 58, 10).fill('#ffffff');
+      doc.roundedRect(M + 2, 104, W - 2 * M - 4, 54, 8).stroke(pale);
+      doc.fillColor(maroon)
+        .font('Helvetica-Bold')
+        .fontSize(19)
+        .text('E-TICKET', M + 16, 116);
+      doc.fillColor(muted)
+        .font('Helvetica')
+        .fontSize(9)
+        .text('BOOKING / TICKET ID', M + 16, 139);
+      doc.fillColor(dark)
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .text(String(ticket.ticketId || '-'), M + 115, 137);
+      doc.fillColor(green)
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .text(String(ticket.paymentStatus || 'VERIFIED').toUpperCase(), W - M - 100, 124, {
+          width: 84,
+          align: 'right'
+        });
+
+      // Main information card
+      const cardY = 178;
+      const cardH = 330;
+      doc.roundedRect(M, cardY, W - 2 * M, cardH, 12).fill(light);
+      doc.roundedRect(M, cardY, W - 2 * M, cardH, 12).stroke('#eadbd0');
+
+      // Customer section
+      doc.fillColor(maroon).font('Helvetica-Bold').fontSize(11)
+        .text('GUEST DETAILS', M + 18, cardY + 18);
+      doc.moveTo(M + 18, cardY + 37).lineTo(W - M - 18, cardY + 37)
+        .lineWidth(0.7).stroke('#eadbd0');
+
+      const leftX = M + 18;
+      const rightX = 315;
+      const label = (x, y, title, value, width = 245) => {
+        doc.fillColor(muted).font('Helvetica').fontSize(8).text(title.toUpperCase(), x, y);
+        doc.fillColor(dark).font('Helvetica-Bold').fontSize(12).text(String(value || '-'), x, y + 11, {
+          width,
+          ellipsis: true
+        });
+      };
+
+      label(leftX, cardY + 53, 'Name', ticket.name);
+      label(rightX, cardY + 53, 'Mobile', ticket.mobile);
+      label(leftX, cardY + 92, 'Email', ticket.email || '-');
+      label(rightX, cardY + 92, 'Pass Type', ticket.type);
+      label(leftX, cardY + 131, 'Entry For', String(ticket.people || 1) + ' Person(s)');
+      label(rightX, cardY + 131, 'Ticket Value', '₹' + Number(ticket.amountRupees || 0).toLocaleString('en-IN'));
+
+      // Event highlight row
+      doc.roundedRect(leftX, cardY + 177, W - 2 * M - 36, 66, 9).fill('#ffffff');
+      doc.roundedRect(leftX, cardY + 177, W - 2 * M - 36, 66, 9).stroke('#eadbd0');
+
+      doc.fillColor(maroon).font('Helvetica-Bold').fontSize(9)
+        .text('17 OCTOBER 2026', leftX + 13, cardY + 190);
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(15)
+        .text('5:00 PM – 11:00 PM', leftX + 13, cardY + 207);
+
+      doc.fillColor(muted).font('Helvetica').fontSize(8)
+        .text('VENUE', 330, cardY + 190);
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(10)
+        .text('Aashirvadd Banquet Hall', 330, cardY + 202, { width: 190 });
+      doc.fillColor(muted).font('Helvetica').fontSize(8)
+        .text('Near Gai Ghat, Patna, Bihar', 330, cardY + 217, { width: 190 });
+
+      // Gate row
+      doc.fillColor(muted).font('Helvetica').fontSize(8).text('ENTRY GATE', leftX, cardY + 263);
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(12)
+        .text('Gate No. 1 — Main Entry', leftX, cardY + 275);
+      doc.fillColor(green).font('Helvetica-Bold').fontSize(9)
+        .text('✓ PAYMENT VERIFIED', W - M - 150, cardY + 278, { width: 132, align: 'right' });
+
+      // QR section
+      const qrY = 535;
+      doc.roundedRect(M, qrY, W - 2 * M, 205, 12).fill('#ffffff');
+      doc.roundedRect(M, qrY, W - 2 * M, 205, 12).stroke('#eadbd0');
+
+      doc.fillColor(maroon).font('Helvetica-Bold').fontSize(12)
+        .text('SCAN FOR ENTRY', M + 20, qrY + 17);
+      doc.fillColor(muted).font('Helvetica').fontSize(9)
+        .text('Show this QR code at the gate. Keep your Booking ID safe.', M + 20, qrY + 37, {
+          width: 260
+        });
+
+      // Generate and embed the same signed QR used by the scanner.
+      const qrPng = await QRCode.toBuffer(await qrPayload(ticket), {
+        type: 'png',
+        width: 145,
+        margin: 1,
+        errorCorrectionLevel: 'M'
+      });
+
+      const qrX = W - M - 172;
+      const qrBoxY = qrY + 17;
+      doc.roundedRect(qrX, qrBoxY, 152, 152, 8).fill('#ffffff');
+      doc.image(qrPng, qrX + 8, qrBoxY + 8, { width: 136, height: 136 });
+
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(9)
+        .text(String(ticket.ticketId || '-'), M + 20, qrY + 76, {
+          width: 260,
+          align: 'left'
+        });
+      doc.fillColor(muted).font('Helvetica').fontSize(8.5)
+        .text('Valid for one entry • Gate No. 1', M + 20, qrY + 95);
+      doc.fillColor(maroon).font('Helvetica-Bold').fontSize(10)
+        .text('MY TICKET  •  RANGILO RAAS 2026', M + 20, qrY + 128);
+
+      // Footer
+      doc.rect(0, H - 58, W, 58).fill(maroon);
+      doc.fillColor('#f8e8cf').font('Helvetica-Bold').fontSize(9)
+        .text('KEEP THIS E-TICKET SAFE', M, H - 43);
+      doc.fillColor('#ffffff').font('Helvetica').fontSize(8)
+        .text('Present the QR code at the entrance. Entry is subject to ticket verification.', M, H - 29, {
+          width: W - 2 * M
+        });
+
+      doc.end();
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 app.post('/api/create-booking', async (req, res) => {
