@@ -20,6 +20,7 @@ const ADMIN_DIR = path.join(__dirname, 'admin');
 const TZ = 'Asia/Kolkata';
 const BHARATPE_QR_FILE = path.join(PUBLIC_DIR, 'bharatpe-qr.jpg');
 const BHARATPE_UPI_NAME = 'MOTI DEVI';
+const PROMO_CODES_FILE = path.join(DATA_DIR, 'promo-codes.json');
 
 const PRICES = {
   'NORMAL SINGLE': 299,
@@ -46,6 +47,9 @@ const DEFAULT_CONFIG = {
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(TICKETS_FILE)) fs.writeFileSync(TICKETS_FILE, '[]');
 if (!fs.existsSync(CONFIG_FILE)) fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2));
+if (!fs.existsSync(PROMO_CODES_FILE)) fs.writeFileSync(PROMO_CODES_FILE, JSON.stringify([
+  { code: 'PRAN5', discountPercent: 5, active: true, usageCount: 0, grossSalesRupees: 0, discountGivenRupees: 0, netSalesRupees: 0, createdAt: isoNow(), updatedAt: isoNow() }
+], null, 2));
 
 if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.includes('ChangeThis')) {
   console.warn('\n[WARNING] Set ADMIN_PASSWORD in Render Environment before going live.\n');
@@ -291,6 +295,10 @@ function dbTicket(ticket) {
     name: ticket.name,
     mobile: ticket.mobile,
     email: ticket.email || null,
+    promo_code: ticket.promoCode || ticket.promo_code || null,
+    original_amount_rupees: ticket.originalAmountRupees ?? ticket.original_amount_rupees ?? ticket.amountRupees,
+    discount_percent: ticket.discountPercent ?? ticket.discount_percent ?? 0,
+    discount_amount_rupees: ticket.discountAmountRupees ?? ticket.discount_amount_rupees ?? 0,
     paymentId: ticket.paymentId || null,
     orderId: ticket.orderId || null,
     utr: ticket.utr || null,
@@ -324,6 +332,10 @@ function normalizeTicket(row) {
     people: Number(row.people),
     amountRupees: Number(row.amountRupees),
     email: row.email || null,
+    promoCode: row.promoCode || row.promo_code || null,
+    originalAmountRupees: Number(row.originalAmountRupees ?? row.original_amount_rupees ?? row.amountRupees),
+    discountPercent: Number(row.discountPercent ?? row.discount_percent ?? 0),
+    discountAmountRupees: Number(row.discountAmountRupees ?? row.discount_amount_rupees ?? 0),
     paymentScreenshot: row.paymentScreenshot || row.payment_screenshot || null,
     receivedAmountRupees: row.receivedAmountRupees ?? row.received_amount_rupees ?? null,
     used: Boolean(row.used),
@@ -418,6 +430,134 @@ async function getTicketByUtr(utr) {
     { method: 'GET' }
   );
   return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
+}
+
+async function getPromoCode(code) {
+  const clean = String(code || '').trim().toUpperCase();
+  if (!clean) return null;
+  if (!SUPABASE_ENABLED) {
+    const rows = readJson(PROMO_CODES_FILE, []);
+    return rows.find(x => String(x.code || '').toUpperCase() === clean) || null;
+  }
+  const rows = await supabaseRequest(
+    `promo_codes?code=eq.${encodeURIComponent(clean)}&select=*`,
+    { method: 'GET' }
+  );
+  const p = Array.isArray(rows) ? rows[0] : null;
+  return p ? {
+    ...p,
+    code: String(p.code || '').toUpperCase(),
+    discountPercent: Number(p.discount_percent ?? p.discountPercent ?? 0),
+    active: p.active !== false,
+    usageCount: Number(p.usage_count ?? p.usageCount ?? 0),
+    grossSalesRupees: Number(p.gross_sales_rupees ?? p.grossSalesRupees ?? 0),
+    discountGivenRupees: Number(p.discount_given_rupees ?? p.discountGivenRupees ?? 0),
+    netSalesRupees: Number(p.net_sales_rupees ?? p.netSalesRupees ?? 0)
+  } : null;
+}
+
+async function getAllPromoCodes() {
+  if (!SUPABASE_ENABLED) return readJson(PROMO_CODES_FILE, []);
+  const rows = await supabaseRequest('promo_codes?select=*&order=created_at.asc', { method: 'GET' });
+  return Array.isArray(rows) ? rows.map(p => ({
+    ...p,
+    code: String(p.code || '').toUpperCase(),
+    discountPercent: Number(p.discount_percent ?? 0),
+    usageCount: Number(p.usage_count ?? 0),
+    grossSalesRupees: Number(p.gross_sales_rupees ?? 0),
+    discountGivenRupees: Number(p.discount_given_rupees ?? 0),
+    netSalesRupees: Number(p.net_sales_rupees ?? 0)
+  })) : [];
+}
+
+async function savePromoCode(promo) {
+  const clean = String(promo.code || '').trim().toUpperCase();
+  const discountPercent = Number(promo.discountPercent);
+  const active = promo.active !== false;
+  if (!/^[A-Z0-9_-]{3,30}$/.test(clean)) throw new Error('Promo code must be 3-30 letters/numbers.');
+  if (!Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent >= 100) throw new Error('Discount must be between 0 and 100%.');
+
+  if (!SUPABASE_ENABLED) {
+    const rows = readJson(PROMO_CODES_FILE, []);
+    const now = isoNow();
+    const i = rows.findIndex(x => String(x.code || '').toUpperCase() === clean);
+    const next = {
+      code: clean,
+      discountPercent,
+      active,
+      usageCount: i >= 0 ? Number(rows[i].usageCount || 0) : 0,
+      grossSalesRupees: i >= 0 ? Number(rows[i].grossSalesRupees || 0) : 0,
+      discountGivenRupees: i >= 0 ? Number(rows[i].discountGivenRupees || 0) : 0,
+      netSalesRupees: i >= 0 ? Number(rows[i].netSalesRupees || 0) : 0,
+      createdAt: i >= 0 ? rows[i].createdAt : now,
+      updatedAt: now
+    };
+    if (i >= 0) rows[i] = next; else rows.push(next);
+    writeJson(PROMO_CODES_FILE, rows);
+    return next;
+  }
+
+  const existing = await getPromoCode(clean);
+  const body = {
+    code: clean,
+    discount_percent: discountPercent,
+    active,
+    usage_count: existing ? Number(existing.usageCount || 0) : 0,
+    gross_sales_rupees: existing ? Number(existing.grossSalesRupees || 0) : 0,
+    discount_given_rupees: existing ? Number(existing.discountGivenRupees || 0) : 0,
+    net_sales_rupees: existing ? Number(existing.netSalesRupees || 0) : 0,
+    updated_at: isoNow()
+  };
+  if (existing) {
+    const rows = await supabaseRequest(`promo_codes?code=eq.${encodeURIComponent(clean)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(body)
+    });
+    return Array.isArray(rows) ? rows[0] : rows;
+  }
+  const rows = await supabaseRequest('promo_codes', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ ...body, created_at: isoNow() })
+  });
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+async function updatePromoStats(ticket) {
+  const code = String(ticket.promoCode || '').trim().toUpperCase();
+  if (!code) return;
+  const promo = await getPromoCode(code);
+  if (!promo) return;
+  const gross = Number(ticket.originalAmountRupees ?? ticket.amountRupees ?? 0);
+  const discount = Number(ticket.discountAmountRupees ?? 0);
+  const net = Number(ticket.receivedAmountRupees ?? ticket.amountRupees ?? 0);
+
+  if (!SUPABASE_ENABLED) {
+    const rows = readJson(PROMO_CODES_FILE, []);
+    const i = rows.findIndex(x => String(x.code || '').toUpperCase() === code);
+    if (i >= 0) {
+      rows[i].usageCount = Number(rows[i].usageCount || 0) + 1;
+      rows[i].grossSalesRupees = Number(rows[i].grossSalesRupees || 0) + gross;
+      rows[i].discountGivenRupees = Number(rows[i].discountGivenRupees || 0) + discount;
+      rows[i].netSalesRupees = Number(rows[i].netSalesRupees || 0) + net;
+      rows[i].updatedAt = isoNow();
+      writeJson(PROMO_CODES_FILE, rows);
+    }
+    return;
+  }
+
+  await supabaseRequest(`promo_codes?code=eq.${encodeURIComponent(code)}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      usage_count: Number(promo.usageCount || 0) + 1,
+      gross_sales_rupees: Number(promo.grossSalesRupees || 0) + gross,
+      discount_given_rupees: Number(promo.discountGivenRupees || 0) + discount,
+      net_sales_rupees: Number(promo.netSalesRupees || 0) + net,
+      updated_at: isoNow()
+    })
+  });
 }
 
 async function insertTicket(ticket) {
@@ -775,6 +915,7 @@ app.post('/api/create-booking', async (req, res) => {
     const name = String(req.body.name || '').trim();
     const mobile = String(req.body.mobile || '').trim();
     const email = String(req.body.email || '').trim().toLowerCase();
+    const promoCode = String(req.body.promoCode || '').trim().toUpperCase();
     const eventDate = String(req.body.eventDate || '').trim();
 
     if (!PRICES[type]) return res.status(400).json({ error: 'Invalid pass type.' });
@@ -797,7 +938,17 @@ app.post('/api/create-booking', async (req, res) => {
       });
     }
 
-    const amountRupees = PRICES[type] * qty;
+    const originalAmountRupees = PRICES[type] * qty;
+    let promo = null;
+    if (promoCode) {
+      promo = await getPromoCode(promoCode);
+      if (!promo || promo.active === false) {
+        return res.status(400).json({ error: 'Invalid or inactive promo code.' });
+      }
+    }
+    const discountPercent = promo ? Number(promo.discountPercent || 0) : 0;
+    const discountAmountRupees = promo ? Math.round(originalAmountRupees * discountPercent) / 100 : 0;
+    const amountRupees = Math.max(0, Math.round((originalAmountRupees - discountAmountRupees) * 100) / 100);
     const ticketId = getTicketId();
 
     const ticket = {
@@ -810,6 +961,10 @@ app.post('/api/create-booking', async (req, res) => {
       qty,
       people: getPeople(type, qty),
       amountRupees,
+      originalAmountRupees,
+      discountPercent,
+      discountAmountRupees,
+      promoCode: promo ? promo.code : null,
       receivedAmountRupees: null,
       name,
       mobile,
@@ -837,6 +992,10 @@ app.post('/api/create-booking', async (req, res) => {
       success: true,
       ticket: saved,
       amountRupees,
+      originalAmountRupees,
+      discountPercent,
+      discountAmountRupees,
+      promoCode: promo ? promo.code : null,
       people: ticket.people,
       upiName: BHARATPE_UPI_NAME,
       qrUrl: '/api/payment-qr'
@@ -980,6 +1139,7 @@ app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
       return res.status(409).json({ error: 'This UTR belongs to another booking.' });
     }
 
+    const wasAlreadyVerified = ticket.paymentStatus === 'VERIFIED' || ticket.status === 'CONFIRMED' || ticket.status === 'USED';
     const updated = await updateTicket(ticketId, {
       received_amount_rupees: receivedAmount,
       payment_status: 'VERIFIED',
@@ -989,6 +1149,7 @@ app.post('/api/admin/verify-payment', requireAdmin, async (req, res) => {
       status: 'CONFIRMED',
       used: false
     });
+    if (!wasAlreadyVerified) await updatePromoStats(updated || ticket);
     res.json({ success: true, ticket: updated });
   } catch (err) {
     console.error('verify-payment admin error:', err);
@@ -1551,6 +1712,45 @@ app.post('/api/admin/logout', requireAdmin, (req, res) => {
   Venue and ticket-release controls are intentionally not exposed here.
 */
 
+app.get('/api/admin/promo-codes', requireAdmin, async (req, res) => {
+  try {
+    res.json({ promoCodes: await getAllPromoCodes() });
+  } catch (err) {
+    console.error('admin promo list error:', err);
+    res.status(500).json({ error: 'Could not load promo codes.' });
+  }
+});
+
+app.post('/api/admin/promo-codes', requireAdmin, async (req, res) => {
+  try {
+    const code = String(req.body.code || '').trim().toUpperCase();
+    const discountPercent = Number(req.body.discountPercent);
+    const active = req.body.active !== false;
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) return res.status(400).json({ error: 'Promo code must be 3-30 letters/numbers.' });
+    if (!Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent >= 100) return res.status(400).json({ error: 'Discount must be between 0 and 100%.' });
+    const saved = await savePromoCode({ code, discountPercent, active });
+    res.json({ success: true, promoCode: saved });
+  } catch (err) {
+    console.error('admin promo save error:', err);
+    res.status(500).json({ error: err.message || 'Could not save promo code.' });
+  }
+});
+
+app.patch('/api/admin/promo-codes/:code', requireAdmin, async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toUpperCase();
+    const existing = await getPromoCode(code);
+    if (!existing) return res.status(404).json({ error: 'Promo code not found.' });
+    const discountPercent = req.body.discountPercent === undefined ? existing.discountPercent : Number(req.body.discountPercent);
+    const active = req.body.active === undefined ? existing.active : req.body.active === true;
+    const saved = await savePromoCode({ code, discountPercent, active });
+    res.json({ success: true, promoCode: saved });
+  } catch (err) {
+    console.error('admin promo update error:', err);
+    res.status(500).json({ error: err.message || 'Could not update promo code.' });
+  }
+});
+
 app.get('/api/admin/tickets', requireAdmin, async (req, res) => {
   try {
     const tickets = (await getAllTickets()).map(t => ({
@@ -1630,7 +1830,12 @@ app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
       'Payment Verified At',
       'Status',
       'First Entry (IST)',
-      'Scans'
+      'Scans',
+      'Promo Code',
+      'Original Amount',
+      'Discount %',
+      'Discount Amount',
+      'Net Ticket Amount'
     ]];
 
     const tickets = await getAllTickets();
@@ -1653,7 +1858,12 @@ app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
         formatIndia(t.paymentVerifiedAt),
         t.status,
         formatIndia(t.scannedAt),
-        Array.isArray(t.scanHistory) ? t.scanHistory.length : 0
+        Array.isArray(t.scanHistory) ? t.scanHistory.length : 0,
+        t.promoCode || '',
+        t.originalAmountRupees ?? t.amountRupees,
+        t.discountPercent ?? 0,
+        t.discountAmountRupees ?? 0,
+        t.amountRupees
       ]);
     }
 
