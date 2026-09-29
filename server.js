@@ -735,6 +735,19 @@ app.get('/api/payment-qr', (req, res) => {
   res.sendFile(BHARATPE_QR_FILE);
 });
 
+app.get('/api/promo-code', async (req, res) => {
+  try {
+    const code = String(req.query.code || '').trim().toUpperCase();
+    if (!code) return res.status(400).json({ error: 'Promo code is required.' });
+    const promo = await getPromoCode(code);
+    if (!promo || promo.active === false) return res.status(404).json({ error: 'Invalid or inactive promo code.' });
+    res.json({ valid: true, code: promo.code, discountPercent: Number(promo.discountPercent || 0) });
+  } catch (err) {
+    console.error('promo code lookup error:', err);
+    res.status(500).json({ error: 'Could not validate promo code.' });
+  }
+});
+
 
 async function makeTicketPdfBuffer(ticket) {
   return new Promise(async (resolve, reject) => {
