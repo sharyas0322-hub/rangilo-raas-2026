@@ -437,6 +437,8 @@ async function getPromoCode(code) {
   if (!clean) return null;
   if (!SUPABASE_ENABLED) {
     const rows = readJson(PROMO_CODES_FILE, []);
+    if (active) rows.forEach(x => { x.active = String(x.code || '').toUpperCase() === clean; });
+
     return rows.find(x => String(x.code || '').toUpperCase() === clean) || null;
   }
   const rows = await supabaseRequest(
@@ -498,6 +500,13 @@ async function savePromoCode(promo) {
   }
 
   const existing = await getPromoCode(clean);
+  if (active) {
+    await supabaseRequest('promo_codes?code=neq.' + encodeURIComponent(clean), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ active: false, updated_at: isoNow() })
+    });
+  }
   const body = {
     code: clean,
     discount_percent: discountPercent,
