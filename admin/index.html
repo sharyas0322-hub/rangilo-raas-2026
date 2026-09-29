@@ -6,7 +6,17 @@
 <div class="card" id="loginCard"><h1>🎟️ Rangilo Raas Admin</h1><p class="muted">Real UPI payment verification and gate-entry monitoring.</p><label>Admin User ID</label><input id="username" autocomplete="username" placeholder="Enter admin user ID"><label>Admin Password</label><input id="password" type="password" autocomplete="current-password" placeholder="Enter admin password"><button onclick="login()">LOGIN</button><div id="loginStatus"></div></div>
 <div id="panel" class="hidden">
 <div class="card"><div class="top"><div><h1>🎟️ Admin Dashboard</h1><div class="muted">Direct BharatPe UPI • UTR verification • verified collection • gate entry</div></div><button class="danger" onclick="logout()">LOG OUT</button></div></div>
-<div class="card"><h2>📊 Collection & Entry Overview</h2><div class="grid">
+<div class="card" style="border:2px solid #ffd333">
+<h2>🎟️ Promo Codes & Sales</h2>
+<p class="muted">Create promo codes, set the discount percentage, activate/deactivate them, and see how much ticket sales came through each code.</p>
+<div class="actions">
+  <input id="promoNewCode" placeholder="Promo code e.g. PRAN5" maxlength="30" style="text-transform:uppercase">
+  <input id="promoNewPercent" type="number" min="0.1" max="99.9" step="0.1" value="5" placeholder="Discount %">
+  <button class="verify" onclick="saveNewPromo()">➕ ADD / SAVE PROMO</button>
+</div>
+<div id="promoStatus"></div>
+<div class="table"><table><thead><tr><th>Promo Code</th><th>Discount</th><th>Uses</th><th>Gross Sales</th><th>Discount Given</th><th>Net Sales</th><th>Status</th><th>Action</th></tr></thead><tbody id="promoRows"></tbody></table></div>
+</div><div class="card"><h2>📊 Collection & Entry Overview</h2><div class="grid">
 <div class="stat"><b id="paid">0</b><span>Verified Tickets</span></div>
 <div class="stat"><b id="receivedTotal">₹0</b><span>Total Received</span></div>
 <div class="stat"><b id="pendingCount">0</b><span>Pending UTR</span></div>
@@ -34,7 +44,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function india(i){return i?new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'medium'}).format(new Date(i)):'-'}
 function money(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2})}
 function enter(){$('loginCard').classList.add('hidden');$('panel').classList.remove('hidden')}
-async function login(){try{await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('username').value.trim(),password:$('password').value})});enter();loadTickets()}catch(e){$('loginStatus').innerHTML='<div class="status bad">'+esc(e.message)+'</div>'}}
+async function login(){try{await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('username').value.trim(),password:$('password').value})});enter();loadTickets();loadPromoCodes();loadPromoCodes()}catch(e){$('loginStatus').innerHTML='<div class="status bad">'+esc(e.message)+'</div>'}}
 window.addEventListener('load',async()=>{try{await api('/api/admin/me');enter();loadTickets()}catch{}});
 async function logout(){try{await api('/api/admin/logout',{method:'POST'})}catch{}location.reload()}
 async function backupVerify(){
@@ -67,7 +77,26 @@ async function viewPaymentScreenshot(id){
 async function verifyPayment(id){const el=$('amt-'+id);const received=Number(el?.value);if(!Number.isFinite(received)||received<=0)return alert('Actual received amount enter karo.');if(!confirm('BharatPe me UTR verify karke '+money(received)+' received confirm karna hai?'))return;try{await api('/api/admin/verify-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:id,receivedAmountRupees:received})});await loadTickets();alert('Payment verified. Received: '+money(received))}catch(e){alert(e.message)}}
 async function rejectPayment(id){const reason=prompt('Reason (optional):','Payment could not be verified.');if(reason===null)return;try{await api('/api/admin/reject-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:id,reason})});await loadTickets()}catch(e){alert(e.message)}}
 async function loadAwaitingPayment(){try{const j=await api("/api/admin/awaiting-payment");$("awaitingCount").textContent=j.tickets.length;$("awaitingRows").innerHTML=j.tickets.map(x=>"<tr><td><b>"+esc(x.ticketId)+"</b></td><td>"+esc(x.name)+"</td><td>"+esc(x.mobile)+"</td><td>"+esc(x.type)+" ×"+esc(x.qty)+"</td><td>"+money(x.amountRupees)+"</td><td>"+esc(x.createdAt?india(x.createdAt):"-")+"</td></tr>").join("")||"<tr><td colspan=\"6\">No bookings currently awaiting UTR.</td></tr>"}catch(e){$("awaitingRows").innerHTML="<tr><td colspan=\"6\">"+esc(e.message)+"</td></tr>"}}
-async function loadTickets(){try{const j=await api('/api/admin/tickets');$('paid').textContent=j.summary.verifiedCount;$('receivedTotal').textContent=money(j.summary.receivedTotal);$('pendingCount').textContent=j.summary.pendingUtr;$('allCount').textContent=j.tickets.length;$('unused').textContent=j.summary.unused;$('used').textContent=j.summary.used;$('entryStatus').innerHTML='🟢 <b>Scanner ready</b> — '+j.summary.used+' ticket(s) admitted. Verified collection: '+money(j.summary.receivedTotal);$('rows').innerHTML=j.tickets.map(x=>{let st=x.used?'<span class="entry">ENTERED</span>':x.paymentStatus==='VERIFIED'?'<span class="unused">VERIFIED / UNUSED</span>':'<span class="badge">'+esc(x.paymentStatus||'PENDING')+'</span>';return '<tr><td>'+esc(x.ticketId)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mobile)+'</td><td>'+esc(x.email||'-')+'</td><td>'+esc(x.eventDate)+'</td><td>'+esc(x.type)+' ×'+esc(x.qty)+'</td><td>'+money(x.amountRupees)+'</td><td>'+((x.receivedAmountRupees!==null&&x.receivedAmountRupees!==undefined)?money(x.receivedAmountRupees):'-')+'</td><td>'+esc(x.utr||'-')+'</td><td>'+esc(x.paymentStatus||'PENDING')+'</td><td>'+st+'</td><td><button class="view-btn" onclick="viewTicket(\''+esc(x.ticketId)+'\')">VIEW TICKET</button></td><td><button class="danger" onclick="deleteTicket(\''+esc(x.ticketId)+'\')">DELETE</button></td></tr>'}).join('')||'<tr><td colspan="12">No bookings yet.</td></tr>';await loadPendingPayments();await loadAwaitingPayment()}catch(e){$('entryStatus').className='status bad';$('entryStatus').textContent=e.message}}
+async function loadPromoCodes(){
+  try{
+    const j=await api('/api/admin/promo-codes');
+    $('promoRows').innerHTML=j.promoCodes.map(x=>'<tr><td><b>'+esc(x.code)+'</b></td><td>'+Number(x.discountPercent||0)+'%</td><td>'+Number(x.usageCount||0)+'</td><td class="money">'+money(x.grossSalesRupees)+'</td><td>'+money(x.discountGivenRupees)+'</td><td class="money">'+money(x.netSalesRupees)+'</td><td>'+ (x.active?'<span class="entry">ACTIVE</span>':'<span class="badge">OFF</span>') +'</td><td><button class="secondary" onclick="togglePromo(''+esc(x.code)+'','+(x.active?'false':'true')+')">'+(x.active?'DEACTIVATE':'ACTIVATE')+'</button></td></tr>').join('')||'<tr><td colspan="8">No promo codes.</td></tr>';
+  }catch(e){$('promoRows').innerHTML='<tr><td colspan="8">'+esc(e.message)+'</td></tr>'}
+}
+async function saveNewPromo(){
+  const code=$('promoNewCode').value.trim().toUpperCase();
+  const discountPercent=Number($('promoNewPercent').value);
+  if(!code||!Number.isFinite(discountPercent)||discountPercent<=0||discountPercent>=100)return $('promoStatus').innerHTML='<div class="status bad">Valid promo code and discount % enter karo.</div>';
+  try{
+    await api('/api/admin/promo-codes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,discountPercent,active:true})});
+    $('promoStatus').innerHTML='<div class="status ok">✅ Promo code saved: <b>'+esc(code)+'</b> — '+discountPercent+'%</div>';
+    $('promoNewCode').value=''; $('promoNewPercent').value='5'; loadPromoCodes();
+  }catch(e){$('promoStatus').innerHTML='<div class="status bad">'+esc(e.message)+'</div>'}
+}
+async function togglePromo(code,active){
+  try{await api('/api/admin/promo-codes/'+encodeURIComponent(code),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({active})});loadPromoCodes()}catch(e){alert(e.message)}
+}
+async function loadTickets(){try{const j=await api('/api/admin/tickets');$('paid').textContent=j.summary.verifiedCount;$('receivedTotal').textContent=money(j.summary.receivedTotal);$('pendingCount').textContent=j.summary.pendingUtr;$('allCount').textContent=j.tickets.length;$('unused').textContent=j.summary.unused;$('used').textContent=j.summary.used;$('entryStatus').innerHTML='🟢 <b>Scanner ready</b> — '+j.summary.used+' ticket(s) admitted. Verified collection: '+money(j.summary.receivedTotal);$('rows').innerHTML=j.tickets.map(x=>{let st=x.used?'<span class="entry">ENTERED</span>':x.paymentStatus==='VERIFIED'?'<span class="unused">VERIFIED / UNUSED</span>':'<span class="badge">'+esc(x.paymentStatus||'PENDING')+'</span>';return '<tr><td>'+esc(x.ticketId)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mobile)+'</td><td>'+esc(x.email||'-')+'</td><td>'+esc(x.eventDate)+'</td><td>'+esc(x.type)+' ×'+esc(x.qty)+'</td><td>'+money(x.amountRupees)+'</td><td>'+((x.receivedAmountRupees!==null&&x.receivedAmountRupees!==undefined)?money(x.receivedAmountRupees):'-')+'</td><td>'+esc(x.utr||'-')+'</td><td>'+esc(x.paymentStatus||'PENDING')+'</td><td>'+st+'</td><td><button class="view-btn" onclick="viewTicket(\''+esc(x.ticketId)+'\')">VIEW TICKET</button></td><td><button class="danger" onclick="deleteTicket(\''+esc(x.ticketId)+'\')">DELETE</button></td></tr>'}).join('')||'<tr><td colspan="12">No bookings yet.</td></tr>';await loadPendingPayments();await loadAwaitingPayment();await loadPromoCodes()}catch(e){$('entryStatus').className='status bad';$('entryStatus').textContent=e.message}}
 async function cancelBooking(id){
   const ok=confirm('CANCEL BOOKING '+id+'?\n\nThis will remove the booking, customer details, UTR, payment status and ticket QR from active records.\n\nThe mobile number can then be used for a new booking.');
   if(!ok)return;
