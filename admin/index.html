@@ -80,7 +80,7 @@ async function loadAwaitingPayment(){try{const j=await api("/api/admin/awaiting-
 async function loadPromoCodes(){
   try{
     const j=await api('/api/admin/promo-codes');
-    $('promoRows').innerHTML=j.promoCodes.map(x=>'<tr><td><b>'+esc(x.code)+'</b></td><td>'+Number(x.discountPercent||0)+'%</td><td>'+Number(x.usageCount||0)+'</td><td class="money">'+money(x.grossSalesRupees)+'</td><td>'+money(x.discountGivenRupees)+'</td><td class="money">'+money(x.netSalesRupees)+'</td><td>'+ (x.active?'<span class="entry">ACTIVE</span>':'<span class="badge">OFF</span>') +'</td><td><button class="secondary" onclick="togglePromo(''+esc(x.code)+'','+(x.active?'false':'true')+')">'+(x.active?'DEACTIVATE':'ACTIVATE')+'</button></td></tr>').join('')||'<tr><td colspan="8">No promo codes.</td></tr>';
+    $('promoRows').innerHTML=j.promoCodes.map(x=>'<tr><td><b>'+esc(x.code)+'</b></td><td>'+Number(x.discountPercent||0)+'%</td><td>'+Number(x.usageCount||0)+'</td><td class="money">'+money(x.grossSalesRupees)+'</td><td>'+money(x.discountGivenRupees)+'</td><td class="money">'+money(x.netSalesRupees)+'</td><td>'+(x.active?'<span class="entry">ACTIVE</span>':'<span class="badge">OFF</span>')+'</td><td><button class="secondary" onclick="togglePromo(\''+esc(x.code)+'\','+(x.active?'false':'true')+')">'+(x.active?'DEACTIVATE':'ACTIVATE')+'</button></td></tr>').join('')||'<tr><td colspan="8">No promo codes.</td></tr>';
   }catch(e){$('promoRows').innerHTML='<tr><td colspan="8">'+esc(e.message)+'</td></tr>'}
 }
 async function saveNewPromo(){
