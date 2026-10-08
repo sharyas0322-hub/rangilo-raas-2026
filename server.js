@@ -402,6 +402,20 @@ async function getTicketByMobile(mobile) {
   return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
 }
 
+async function getTicketByEmail(email) {
+  const clean = String(email || '').trim().toLowerCase();
+  if (!clean) return null;
+  if (!SUPABASE_ENABLED) {
+    const tickets = readJson(TICKETS_FILE, []);
+    return tickets.find(t => String(t.email || '').trim().toLowerCase() === clean) || null;
+  }
+  const rows = await supabaseRequest(
+    `tickets?email=eq.${encodeURIComponent(clean)}&select=*&order=createdAt.desc&limit=1`,
+    { method: 'GET' }
+  );
+  return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
+}
+
 async function getTicketByMobileAndEmail(mobile, email) {
   const cleanMobile = String(mobile || '').trim();
   const cleanEmail = String(email || '').trim().toLowerCase();
@@ -965,10 +979,17 @@ app.post('/api/create-booking', async (req, res) => {
       return res.status(400).json({ error: 'Please select a valid event date.' });
     }
 
-    const existing = await getTicketByMobile(mobile);
-    if (existing) {
+    const existingMobile = await getTicketByMobile(mobile);
+    if (existingMobile) {
       return res.status(409).json({
-        error: `This mobile number already has a booking. Booking ID: ${existing.ticketId}. Please use MY TICKET.`
+        error: `This mobile number is already registered for a booking. Please use the same mobile number to access your existing booking (Booking ID: ${existingMobile.ticketId}).`
+      });
+    }
+
+    const existingEmail = await getTicketByEmail(email);
+    if (existingEmail) {
+      return res.status(409).json({
+        error: `This email address is already registered for a booking. Please use a different email address or access your existing booking (Booking ID: ${existingEmail.ticketId}).`
       });
     }
 
