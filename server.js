@@ -1013,7 +1013,7 @@ app.post('/api/create-booking', async (req, res) => {
       event: isGangaEvent ? 'Rangilo Raas — Ganga Devi Dandiya Night' : 'Rangilo Raas 2026',
       eventDate,
       eventDates: isGangaEvent ? '16 October 2026' : '17 October 2026',
-      eventTime: isGangaEvent ? '4:00 PM onwards' : '5:00 PM – 11:00 PM',
+      eventTime: isGangaEvent ? '1:00 PM onwards' : '5:00 PM – 11:00 PM',
       venueName: isGangaEvent ? 'Ganga Devi Mahila Mahavidyalaya' : readConfig().venueName,
       venueAddress: isGangaEvent ? 'Patna, Bihar' : readConfig().venueAddress,
       girlsOnly: isGangaEvent,
