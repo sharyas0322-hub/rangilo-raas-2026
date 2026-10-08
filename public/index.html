@@ -184,7 +184,7 @@ async function showPayment(){
       <label style="margin-top:14px">Payment Screenshot</label>
       <input id="paymentScreenshot" type="file" accept="image/jpeg,image/png,image/webp" onchange="checkPaymentSubmitReady()" style="padding:10px;background:#050816">
       <p class="note">Payment ke baad UTR / Transaction ID ya successful payment screenshot me se koi ek submit karein.</p>
-      <button class="paid" id="utrBtn" onclick="submitUtr()" disabled>SUBMIT PAYMENT PROOF</button>
+      <button class="paid" id="utrBtn" type="button" onclick="submitUtr()">SUBMIT PAYMENT PROOF</button>
       <p id="utrStatus" class="note"></p>`;
     document.getElementById('payment').classList.remove('hidden');
     status.textContent='';
@@ -207,7 +207,12 @@ async function compressPaymentScreenshot(file){
   return data;
 }
 
-function checkPaymentSubmitReady(){const utr=document.getElementById('utrInput')?.value.trim()||'';const file=document.getElementById('paymentScreenshot')?.files?.[0];const btn=document.getElementById('utrBtn');if(btn)btn.disabled=!(/^[A-Za-z0-9_-]{6,40}$/.test(utr)||!!file);}
+function checkPaymentSubmitReady(){
+  const utr=document.getElementById('utrInput')?.value.trim()||'';
+  const file=document.getElementById('paymentScreenshot')?.files?.[0];
+  const btn=document.getElementById('utrBtn');
+  if(btn){btn.disabled=false;btn.style.opacity=(/^[A-Za-z0-9_-]{6,40}$/.test(utr)||!!file)?'1':'.55';}
+}
 async function submitUtr(){
   if(!currentTicket)return;
   const utr=document.getElementById('utrInput').value.trim();
