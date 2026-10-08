@@ -22,7 +22,7 @@
 .scan-card.success .scan-detail b:first-child{color:#74f5ad}
 .scan-card.success .scan-status{background:#0a9f58;color:#fff;border:1px solid #62ffad}
 @media(max-width:520px){.scan-card{border-radius:20px}.scan-title{font-size:25px}.scan-details{padding:14px 16px}.scan-detail{font-size:14px}} .camera-note{margin-top:8px;font-size:12px;color:#bbb}.testbox{display:none;margin-top:12px;padding:12px;border:1px dashed #ffd33355;border-radius:12px;background:#ffd33308}.testbox button{background:#6ee7b7}.testbox.off button{background:#ffd333}</style>
-<script src="https://unpkg.com/html5-qrcode" defer></script></head><body><div class="wrap"><div class="box"><h2>🎟️ Rangilo Raas Gate Scanner</h2><div id="releaseState" class="state">Checking scanner status...</div><p class="small"><b>Camera is the primary method.</b> Point the gate phone camera at the customer's QR. If camera access is unavailable, use the Ticket ID verification below.</p><label>Staff name</label><input id="staff" placeholder="Staff name" value="Gate Staff">
+<script src="https://unpkg.com/html5-qrcode" defer></script></head><body><div class="wrap"><div class="box"><h2 id="scannerTitle">🎟️ Rangilo Raas Gate Scanner</h2><div id="scannerEvent" class="state" style="background:#24103a;border:1px solid #ffd33355">🎟️ RANGILO RAAS • MAIN EVENT</div><div id="releaseState" class="state">Checking scanner status...</div><p class="small"><b>Camera is the primary method.</b> Point the gate phone camera at the customer's QR. If camera access is unavailable, use the Ticket ID verification below.</p><label>Staff name</label><input id="staff" placeholder="Staff name" value="Gate Staff">
 <div id="reader"></div><div id="cameraStatus" class="camera-note">Starting camera…</div>
 <div id="localTestBox" class="testbox">
   <b>🧪 LOCAL TEST SCAN MODE</b>
@@ -47,7 +47,7 @@
 </div>
 <script>
 window.addEventListener('load',async()=>{
- const result=document.getElementById('result'),state=document.getElementById('releaseState'),cameraStatus=document.getElementById('cameraStatus');let qr=null,busy=false,active=false;
+ const result=document.getElementById('result'),state=document.getElementById('releaseState'),cameraStatus=document.getElementById('cameraStatus'); const isGanga=location.pathname==='/ganga-scanner'||location.pathname==='/ganga-scanner/'; const expectedEventId=isGanga?'ganga-devi':'rangilo'; let qr=null,busy=false,active=false; if(isGanga){document.title='Ganga Devi - Gate Scanner';document.getElementById('scannerTitle').textContent='🎓 Ganga Devi Gate Scanner';document.getElementById('scannerEvent').innerHTML='🎓 <b>GANGA DEVI MAHILA MAHAVIDYALAYA</b><br>Girls Only • 16 October 2026 • 1:00 PM – 6:00 PM';}
  const localTestBox=document.getElementById('localTestBox'),localTestStatus=document.getElementById('localTestStatus'),localTestBtn=document.getElementById('localTestBtn');
  async function refreshLocalTestMode(){
    if(!['localhost','127.0.0.1','::1'].includes(location.hostname)) return;
@@ -83,7 +83,7 @@ window.addEventListener('load',async()=>{
    return '<div class="scan-detail"><b>Ticket ID</b><b>'+esc(t.ticketId)+'</b></div>'+
      '<div class="scan-detail"><b>Customer</b><b>'+esc(t.name)+'</b></div>'+
      '<div class="scan-detail"><b>Mobile</b><b>'+esc(t.mobile)+'</b></div>'+
-     '<div class="scan-detail"><b>Pass Type</b><b>'+esc(t.type)+'</b></div>'+
+     '<div class="scan-detail"><b>Pass Type</b><b>'+esc(isGanga?(t.type==='GD SOLO'?'SOLO PASS':'4 PEOPLE PASS'):t.type)+'</b></div>'+ '<div class="scan-detail"><b>Venue</b><b>'+esc(isGanga?'Ganga Devi Mahila Mahavidyalaya, Patna':'Aashirvadd Banquet Hall, Patna')+'</b></div>'+
      '<div class="scan-detail"><b>Entry For</b><b>'+esc(t.people)+' Person(s)</b></div>'+
      '<div class="scan-detail"><b>Ticket Value</b><b>₹'+esc(t.amountRupees)+'</b></div>';
  }
@@ -144,7 +144,7 @@ window.addEventListener('load',async()=>{
    const btn=document.getElementById('allowEntryBtn');
    if(btn)btn.disabled=true;
    try{
-     const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:ticket.ticketId,staff:document.getElementById('staff').value||'Gate Staff',approveEntry:true})});
+     const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:ticket.ticketId,staff:document.getElementById('staff').value||'Gate Staff',approveEntry:true,eventId:expectedEventId})});
      const j=await r.json();
      if(j.status==='VALID'){
        pendingApproval=null;
@@ -168,8 +168,8 @@ window.addEventListener('load',async()=>{
  }
 
 
- async function submitQrText(text){if(busy)return;busy=true;try{const data=JSON.parse(text);if(!data.ticketId||!data.sig)throw new Error('Invalid QR');const r=await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:data.ticketId,sig:data.sig,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','INVALID ✕','QR is not a valid Rangilo Raas ticket.')}finally{setTimeout(()=>busy=false,1200)}}
- async function manualVerify(){if(busy)return;const ticketId=document.getElementById('manualTicketId').value.trim();if(!ticketId){show('bad','TICKET ID REQUIRED','Enter the Ticket ID printed on the ticket.');return}busy=true;try{const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId,staff:document.getElementById('staff').value||'Gate Staff'})});const j=await r.json();processResponse(j)}catch(e){show('bad','SERVER ERROR','Could not verify Ticket ID. Check the server connection.')}finally{busy=false}}
+ async function submitQrText(text){if(busy)return;busy=true;try{const data=JSON.parse(text);if(!data.ticketId||!data.sig)throw new Error('Invalid QR');const r=await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:data.ticketId,sig:data.sig,staff:document.getElementById('staff').value||'Gate Staff',eventId:expectedEventId})});const j=await r.json();processResponse(j)}catch(e){show('bad','INVALID ✕','QR is not a valid Rangilo Raas ticket.')}finally{setTimeout(()=>busy=false,1200)}}
+ async function manualVerify(){if(busy)return;const ticketId=document.getElementById('manualTicketId').value.trim();if(!ticketId){show('bad','TICKET ID REQUIRED','Enter the Ticket ID printed on the ticket.');return}busy=true;try{const r=await fetch('/api/manual-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId,staff:document.getElementById('staff').value||'Gate Staff',eventId:expectedEventId})});const j=await r.json();processResponse(j)}catch(e){show('bad','SERVER ERROR','Could not verify Ticket ID. Check the server connection.')}finally{busy=false}}
  document.getElementById('manualBtn').addEventListener('click',manualVerify);document.getElementById('manualTicketId').addEventListener('keydown',e=>{if(e.key==='Enter')manualVerify()});
  function start(){if(!window.Html5Qrcode){cameraStatus.textContent='Camera library is still loading…';setTimeout(start,500);return}try{qr=new Html5Qrcode('reader');qr.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:250}},submitQrText).then(()=>{cameraStatus.textContent='📷 Camera active — point it at the QR code.'}).catch(e=>{cameraStatus.textContent='⚠️ Camera unavailable: '+(e?.message||String(e)||'unknown camera error')+'. Use Ticket ID Verification below.'})}catch(e){cameraStatus.textContent='⚠️ Camera unavailable: '+(e?.message||String(e)||'unknown camera error')+'. Use Ticket ID Verification below.'}}
 
