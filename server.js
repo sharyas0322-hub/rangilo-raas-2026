@@ -948,11 +948,8 @@ app.post('/api/create-booking', async (req, res) => {
     const eventDate = String(req.body.eventDate || '').trim();
     const eventId = String(req.body.eventId || 'rangilo').trim().toLowerCase();
     const isGangaEvent = eventId === 'ganga-devi';
-    const eventId = String(req.body.eventId || 'rangilo').trim().toLowerCase();
-    const isGangaEvent = eventId === 'ganga-devi';
 
     if (!PRICES[type]) return res.status(400).json({ error: 'Invalid pass type.' });
-    if (isGangaEvent && !['GD SOLO','GD 4 PEOPLE'].includes(type)) return res.status(400).json({ error: 'Invalid Ganga Devi pass type.' });
     if (isGangaEvent && !['GD SOLO','GD 4 PEOPLE'].includes(type)) return res.status(400).json({ error: 'Invalid Ganga Devi pass type.' });
     if (!isGangaEvent && ['GD SOLO','GD 4 PEOPLE'].includes(type)) return res.status(400).json({ error: 'Invalid event pass type.' });
     if (![1, 2].includes(qty)) return res.status(400).json({ error: 'Quantity must be 1 or 2.' });
