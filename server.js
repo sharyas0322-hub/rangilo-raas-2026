@@ -951,6 +951,7 @@ app.post('/api/create-booking', async (req, res) => {
 
     if (!PRICES[type]) return res.status(400).json({ error: 'Invalid pass type.' });
     if (isGangaEvent && !['GD SOLO','GD 4 PEOPLE'].includes(type)) return res.status(400).json({ error: 'Invalid Ganga Devi pass type.' });
+    if (isGangaEvent && eventDate !== '2026-10-16') return res.status(400).json({ error: 'Ganga Devi event date must be 16 October 2026.' });
     if (!isGangaEvent && ['GD SOLO','GD 4 PEOPLE'].includes(type)) return res.status(400).json({ error: 'Invalid event pass type.' });
     if (![1, 2].includes(qty)) return res.status(400).json({ error: 'Quantity must be 1 or 2.' });
     if (!name) return res.status(400).json({ error: 'Name is required.' });
