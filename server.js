@@ -26,7 +26,9 @@ const PRICES = {
   'NORMAL SINGLE': 299,
   'NORMAL COUPLE': 549,
   'GROUP PASS': 999,
-  'VIP COUPLE': 699
+  'VIP COUPLE': 699,
+  'GD SOLO': 249,
+  'GD 4 PEOPLE': 799
 };
 
 const DEFAULT_CONFIG = {
@@ -225,12 +227,12 @@ function requireAdmin(req, res, next) {
 }
 
 function getPeople(type, qty) {
-  const perPass = type === 'GROUP PASS' ? 4 : (type.includes('COUPLE') ? 2 : 1);
+  const perPass = type === 'GROUP PASS' || type === 'GD 4 PEOPLE' ? 4 : (type.includes('COUPLE') ? 2 : 1);
   return perPass * qty;
 }
 
 function validEventDate(date) {
-  return readConfig().eventDates.includes(date);
+  return readConfig().eventDates.includes(date) || String(date) === '2026-10-16';
 }
 
 function setAdminCookie(res) {
@@ -284,8 +286,13 @@ function dbTicket(ticket) {
   return {
     ticketId: ticket.ticketId,
     bookingId: ticket.bookingId || ticket.ticketId,
+    eventId: ticket.eventId || (String(ticket.event || '').includes('Ganga Devi') ? 'ganga-devi' : 'rangilo'),
     event: ticket.event || 'Rangilo Raas 2026',
     eventDate: ticket.eventDate,
+    eventTime: ticket.eventTime || null,
+    venueName: ticket.venueName || null,
+    venueAddress: ticket.venueAddress || null,
+    girlsOnly: Boolean(ticket.girlsOnly),
     eventDates: ticket.eventDates || '17 October 2026',
     type: ticket.type,
     qty: Number(ticket.qty),
@@ -939,8 +946,12 @@ app.post('/api/create-booking', async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     const promoCode = String(req.body.promoCode || '').trim().toUpperCase();
     const eventDate = String(req.body.eventDate || '').trim();
+    const eventId = String(req.body.eventId || 'rangilo').trim().toLowerCase();
+    const isGangaEvent = eventId === 'ganga-devi';
 
     if (!PRICES[type]) return res.status(400).json({ error: 'Invalid pass type.' });
+    if (isGangaEvent && !['GD SOLO','GD 4 PEOPLE'].includes(type)) return res.status(400).json({ error: 'Invalid Ganga Devi pass type.' });
+    if (!isGangaEvent && ['GD SOLO','GD 4 PEOPLE'].includes(type)) return res.status(400).json({ error: 'Invalid event pass type.' });
     if (![1, 2].includes(qty)) return res.status(400).json({ error: 'Quantity must be 1 or 2.' });
     if (!name) return res.status(400).json({ error: 'Name is required.' });
     if (!/^[6-9]\d{9}$/.test(mobile)) {
@@ -976,9 +987,14 @@ app.post('/api/create-booking', async (req, res) => {
     const ticket = {
       ticketId,
       bookingId: ticketId,
-      event: 'Rangilo Raas 2026',
+      eventId,
+      event: isGangaEvent ? 'Rangilo Raas — Ganga Devi Dandiya Night' : 'Rangilo Raas 2026',
       eventDate,
-      eventDates: '17 October 2026',
+      eventDates: isGangaEvent ? '16 October 2026' : '17 October 2026',
+      eventTime: isGangaEvent ? '4:00 PM onwards' : '5:00 PM – 11:00 PM',
+      venueName: isGangaEvent ? 'Ganga Devi Mahila Mahavidyalaya' : readConfig().venueName,
+      venueAddress: isGangaEvent ? 'Patna, Bihar' : readConfig().venueAddress,
+      girlsOnly: isGangaEvent,
       type,
       qty,
       people: getPeople(type, qty),
@@ -1019,6 +1035,8 @@ app.post('/api/create-booking', async (req, res) => {
       discountAmountRupees,
       promoCode: promo ? promo.code : null,
       people: ticket.people,
+      eventId,
+      event: ticket.event,
       upiName: BHARATPE_UPI_NAME,
       qrUrl: '/api/payment-qr'
     });
