@@ -723,6 +723,8 @@ async function recordScanAttempt(ticketId, scanTime, staff, result) {
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(PUBLIC_DIR));
 app.use('/scanner', express.static(SCANNER_DIR));
+app.get('/ganga-scanner', (req,res)=>res.sendFile(path.join(SCANNER_DIR,'index.html')));
+app.get('/ganga-scanner/', (req,res)=>res.sendFile(path.join(SCANNER_DIR,'index.html')));
 app.use('/admin', express.static(ADMIN_DIR));
 
 app.get('/api/config', (req, res) => res.json(publicConfig()));
@@ -1453,12 +1455,20 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
   }
 });
 
+function scannerEventMismatch(ticket, eventId){
+  const expected = String(eventId || '').trim().toLowerCase();
+  if(!expected) return false;
+  const actual = String(ticket.eventId || (String(ticket.event || '').toLowerCase().includes('ganga devi') ? 'ganga-devi' : 'rangilo')).toLowerCase();
+  return actual !== expected;
+}
+
 app.post('/api/manual-scan', async (req, res) => {
   try {
     const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
     const staff = String(req.body.staff || 'Gate Staff')
       .trim()
       .slice(0, 80) || 'Gate Staff';
+    const eventId = String(req.body.eventId || '').trim().toLowerCase();
 
     if (!ticketId) {
       return res.status(400).json({
@@ -1478,6 +1488,10 @@ app.post('/api/manual-scan', async (req, res) => {
     }
 
     const config = publicConfig();
+
+    if (scannerEventMismatch(ticket, eventId)) {
+      return res.json({ status:'INVALID', message: eventId==='ganga-devi' ? 'This is not a Ganga Devi ticket. Please use the main Rangilo Raas scanner.' : 'This is a Ganga Devi ticket. Please use the Ganga Devi scanner.', ticket });
+    }
 
     if (ticket.paymentStatus !== 'VERIFIED') {
       const updated = await recordScanAttempt(
@@ -1595,6 +1609,7 @@ app.post('/api/scan', async (req, res) => {
     const staff = String(req.body.staff || 'Gate Staff')
       .trim()
       .slice(0, 80) || 'Gate Staff';
+    const eventId = String(req.body.eventId || '').trim().toLowerCase();
 
     if (!ticketId || !sig) {
       return res.status(400).json({
@@ -1620,6 +1635,9 @@ app.post('/api/scan', async (req, res) => {
     }
 
     const config = publicConfig();
+    if (scannerEventMismatch(ticket, eventId)) {
+      return res.json({ status:'INVALID', message: eventId==='ganga-devi' ? 'This is not a Ganga Devi ticket. Please use the main Rangilo Raas scanner.' : 'This is a Ganga Devi ticket. Please use the Ganga Devi scanner.', ticket });
+    }
     const scanTime = isoNow();
 
     if (ticket.paymentStatus !== 'VERIFIED') {
