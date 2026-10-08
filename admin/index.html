@@ -23,7 +23,7 @@
 <div class="stat"><b id="unused">0</b><span>Unused Tickets</span></div>
 <div class="stat"><b id="used">0</b><span>Entries Allowed</span></div>
 </div><div id="entryStatus" class="status ok">🟢 Scanner is ready.</div>
-<div class="actions"><button class="secondary" onclick="loadTickets()">🔄 REFRESH</button><button class="secondary" onclick="openScanner()">📷 OPEN GATE SCANNER</button><button class="secondary" onclick="downloadCsv()">⬇️ DOWNLOAD CSV</button></div></div>
+<div class="actions"><button class="secondary" onclick="loadTickets()">🔄 REFRESH</button><button class="secondary" onclick="openScanner()">📷 OPEN RANGILO SCANNER</button><button class="secondary" onclick="openGangaScanner()">🎓 OPEN GANGA DEVI SCANNER</button><button class="secondary" onclick="downloadCsv()">⬇️ DOWNLOAD CSV</button></div></div>
 <div class="card" style="border:2px solid #f59e0b">
 <h2>🛟 Backup Verify by Ticket ID</h2>
 <p class="muted">Website/payment flow me problem ho to existing Booking/Ticket ID se manual verification kar sakte hain. Ye <b>manual override</b> hai—payment independently confirm karke hi use karein.</p>
@@ -34,7 +34,7 @@
 <div id="backupStatus"></div>
 </div><div class="card"><h2>⏳ Pending UTR Payments</h2><p class="muted">BharatPe transaction history me UTR, customer aur actual received amount match karke VERIFY karein. Verify karte waqt <b>actual amount received</b> enter karein.</p><div class="table"><table><thead><tr><th>Booking ID</th><th>Name</th><th>Mobile</th><th>Email</th><th>Ticket Value</th><th>UTR</th><th>Screenshot</th><th>Submitted</th><th>Actual Received</th><th>Action</th></tr></thead><tbody id="pendingRows"></tbody></table></div></div>
 <div class="card"><h2>🟠 Awaiting Payment / UTR <span class="badge" id="awaitingCount">0</span></h2><p class="muted">These customers completed the booking form, but no UTR has been submitted yet. Payment is not confirmed. Use this list to identify bookings that are still waiting for payment/UTR.</p><div class="table"><table><thead><tr><th>Booking ID</th><th>Name</th><th>Mobile</th><th>Email</th><th>Pass</th><th>Amount</th><th>Created</th></tr></thead><tbody id="awaitingRows"></tbody></table></div></div><div class="card"><h2>💳 All Customer Tickets <span class="badge" id="allCount">0</span></h2><p class="muted">Every booking remains saved in the database until you intentionally CANCEL or DELETE it. VIEW opens the complete ticket. CANCEL removes the booking and allows the mobile to book again. DELETE is for test/faulty cleanup. Verified tickets show the active QR.</p><div class="table"><table><thead><tr><th>Ticket ID</th><th>Event</th><th>Name</th><th>Mobile</th><th>Email</th><th>Date</th><th>Pass</th><th>Ticket Value</th><th>Received</th><th>UTR</th><th>Payment</th><th>Entry</th><th>Ticket</th><th>Manage (Cancel / Delete)</th></tr></thead><tbody id="rows"></tbody></table></div></div>
-<div class="card"><h2>📷 Gate Scanner</h2><p>Camera is the primary method. If camera permission is unavailable, Ticket ID verification is available as backup.</p><div class="status">📍 Aashirvadd Banquet Hall • 🚪 Gate No. 1 — Main Entry</div><button onclick="openScanner()">OPEN SCANNER</button></div>
+<div class="card"><h2>📷 Gate Scanners</h2><p>Har event ka separate scanner use karein, taaki galat event ka ticket entry na le sake.</p><div class="actions"><button class="secondary" onclick="openScanner()">🎟️ RANGILO RAAS SCANNER</button><button class="verify" onclick="openGangaScanner()">🎓 GANGA DEVI SCANNER</button></div><div class="status">Rangilo: Aashirvadd Banquet Hall • Gate 1<br>Ganga Devi: Ganga Devi Mahila Mahavidyalaya • Gate 1</div></div>
 </div></div>
 <div id="viewModal" class="modal hidden"><div class="modal-box"><button class="modal-close" onclick="closeView()">CLOSE</button><h2>🎟️ Ticket Details</h2><div id="viewBody"></div></div></div>
 <script>
@@ -185,7 +185,7 @@ async function shareTicketWhatsApp(t){
     alert(e.message||'Could not prepare WhatsApp share.');
   }
 }
-function openScanner(){window.open('/scanner/','_blank')}
+function openScanner(){window.open('/scanner/','_blank')} function openGangaScanner(){window.open('/ganga-scanner/','_blank')}
 setInterval(()=>{if(!$('panel').classList.contains('hidden'))loadTickets()},15000);
 function downloadCsv(){window.location.href='/api/admin/export.csv'}
 </script></body></html>
