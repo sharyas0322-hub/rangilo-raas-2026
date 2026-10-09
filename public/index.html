@@ -70,6 +70,7 @@
 </div>
 <section class="rr-video-section"><div class="rr-video-title">💃🕺 DANDIYA NIGHT</div><video class="rr-main-video" autoplay muted loop playsinline preload="metadata"><source src="rr-opening.mp4" type="video/mp4"></video></section><section class="contact"><h2 style="color:#ffd333">📞 Contact & Organizer</h2><div class="organizer-detail"><b>SS Digital Solutions & Events</b><div style="margin:8px 0 0">Event Brand: <b>SS Events / Rangilo Raas</b></div><div style="margin:6px 0 0">WhatsApp: <b>9471494356</b></div></div><div><a href="https://wa.me/919471494356" target="_blank" rel="noopener">💬 Contact Support</a></div><p style="opacity:.75;font-size:13px">Venue: Aashirvadd Banquet Hall • Entry: Gate No. 1 • Patna, Bihar</p><div style="margin-top:12px;font-size:12px;line-height:1.8"><a href="/about.html">About Us</a><a href="/events.html">Event Details</a><a href="/contact.html">Contact</a><a href="/terms.html">Terms & Conditions</a><a href="/privacy.html">Privacy Policy</a><a href="/refund.html">Refund/Cancellation</a><a href="/organizer.html">Organizer Details</a></div></section>
 
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
 let price=299,type='NORMAL SINGLE',people=1,eventDate='2026-10-17',currentTicket=null;
 window.currentEventId='rangilo';
@@ -151,81 +152,89 @@ function closeBook(){document.getElementById('book').classList.remove('show')}
 
 async function showPayment(){
   const paymentBox=document.getElementById('payment');
-  const statusBox=document.getElementById('payStatus');
-  if(statusBox) statusBox.textContent='Booking create ho rahi hai...';
-  if(paymentBox) paymentBox.classList.remove('hidden');
+  const status=document.getElementById('payStatus');
   const n=document.getElementById('name').value.trim();
   const m=document.getElementById('mobile').value.trim();
   const e=document.getElementById('email').value.trim();
   const q=Number(document.getElementById('qty').value);
   const promoCode=appliedPromo?.code || (document.getElementById('promoCode')?.value||'').trim().toUpperCase();
-  const status=document.getElementById('payStatus');
   if(!n){alert('Name enter karo');return;}
   if(!/^[6-9]\d{9}$/.test(m)){alert('Valid 10-digit mobile number enter karo');return;}
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){alert('Valid email address enter karo');return;}
-  status.textContent='Booking create ho rahi hai...';
+  paymentBox.classList.remove('hidden');
+  status.textContent='Secure Razorpay order create ho raha hai...';
   try{
+    if(!window.Razorpay) throw new Error('Secure checkout load nahi hua. Page refresh karke dobara try karo.');
     const r=await fetch('/api/create-booking',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,qty:q,name:n,mobile:m,email:e,eventDate,promoCode,eventId:window.currentEventId||'rangilo'})});
     const data=await r.json();
     if(r.status===409){
-      document.getElementById('payment').classList.remove('hidden');
-      status.innerHTML='<div class="status warning"><b>⚠️ Ticket Already Created</b><br>This mobile number already has a booking.<br>Please check <b>MY TICKET</b> using your Booking ID and registered mobile number.</div>';
+      status.innerHTML='<div class="status warning"><b>⚠️ Booking already exists</b><br>'+escapeHtml(data.error||'Is mobile se booking pehle se hai.')+'<br>Retrieve Booking option se payment continue karo.</div>';
       return;
     }
-    if(!r.ok) throw new Error(data.error||'Could not create booking.');
+    if(!r.ok) throw new Error(data.error||'Razorpay order create nahi ho saka.');
     currentTicket=data.ticket;
     appliedPromo=data.promoCode ? {code:data.promoCode,discountPercent:Number(data.discountPercent||0)} : null;
-    document.getElementById('payment').innerHTML=`
-      <div class="status ok" style="background:#0b6b3a"><b>✅ Booking Created</b><br>Booking ID: <strong>${escapeHtml(currentTicket.ticketId)}</strong><br>Final Amount: <strong>₹${data.amountRupees}</strong></div>
-      <div class="status" style="margin-top:12px;background:#171d3d;border:1px solid #ffd33355">
-        <b style="color:#ffd75a">🔒 Secure Online Payment</b><br>
-        <span style="font-size:13px;opacity:.9">Online payment gateway activation is in progress. Payment will be enabled here after the secure payment gateway is activated.</span>
-      </div>
-      <p class="note">Please do not make any payment until an online payment option is displayed on this page.</p>`;
-    document.getElementById('payment').classList.remove('hidden');
-    status.textContent='';
-  }catch(e){status.textContent=e.message;status.style.color='#ffb3b3';}
+    launchRazorpayCheckout({
+      keyId:data.keyId,
+      orderId:data.orderId,
+      amountPaise:data.amountPaise,
+      amountRupees:data.amountRupees,
+      currency:data.currency||'INR',
+      ticket:data.ticket
+    });
+  }catch(e){status.innerHTML='<div class="status error">'+escapeHtml(e.message)+'</div>';}
 }
 
-async function compressPaymentScreenshot(file){
-  const bitmap=await createImageBitmap(file);
-  const maxSide=1400;
-  const scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
-  const canvas=document.createElement('canvas');
-  canvas.width=Math.max(1,Math.round(bitmap.width*scale));
-  canvas.height=Math.max(1,Math.round(bitmap.height*scale));
-  const ctx=canvas.getContext('2d');
-  ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
-  bitmap.close();
-  let quality=.82;
-  let data=canvas.toDataURL('image/jpeg',quality);
-  while(data.length>1700000 && quality>.45){quality-=.08;data=canvas.toDataURL('image/jpeg',quality);}
-  return data;
+function launchRazorpayCheckout(paymentData){
+  const t=paymentData.ticket||currentTicket;
+  if(!t || !paymentData.orderId || !paymentData.keyId){
+    document.getElementById('payStatus').innerHTML='<div class="status error">Payment details incomplete. Retrieve booking or contact support.</div>';
+    return;
+  }
+  const options={
+    key:paymentData.keyId,
+    amount:Number(paymentData.amountPaise||Math.round(Number(paymentData.amountRupees||t.amountRupees)*100)),
+    currency:paymentData.currency||'INR',
+    name:'SS Digital Solutions & Events',
+    description:(t.event||'Rangilo Raas 2026')+' — '+t.type,
+    order_id:paymentData.orderId,
+    prefill:{name:t.name||'',email:t.email||'',contact:t.mobile||''},
+    notes:{ticketId:t.ticketId,eventId:t.eventId||'rangilo'},
+    theme:{color:'#ffd333'},
+    handler:async function(response){
+      const status=document.getElementById('payStatus');
+      status.textContent='Payment received. Server par verification ho rahi hai...';
+      try{
+        const vr=await fetch('/api/razorpay/verify-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+          ticketId:t.ticketId,
+          razorpay_order_id:response.razorpay_order_id,
+          razorpay_payment_id:response.razorpay_payment_id,
+          razorpay_signature:response.razorpay_signature
+        })});
+        const vd=await vr.json();
+        if(!vr.ok) throw new Error(vd.error||'Payment verify nahi ho saka.');
+        currentTicket=vd.ticket||t;
+        currentTicket.paymentStatus='VERIFIED';
+        currentTicket.status='CONFIRMED';
+        document.getElementById('payment').innerHTML='<div class="booking-success-banner"><div class="banner-icon">🎉</div><div class="banner-title">PAYMENT SUCCESSFUL</div><div class="banner-sub">Razorpay payment verified successfully.</div><div class="booking-label">YOUR BOOKING ID</div><div class="booking-number">'+escapeHtml(currentTicket.ticketId)+'</div><div class="banner-save">✅ SAVE YOUR BOOKING ID</div><div class="banner-note">Your ticket QR is ready. Use your registered mobile number and Booking ID in MY TICKET.</div><button class="my-ticket-btn" onclick="openMyTicketFromBanner()">🎟️ VIEW MY TICKET</button></div>';
+        document.querySelector('.action[onclick="showPayment()"]')?.classList.add('hidden');
+      }catch(err){
+        status.innerHTML='<div class="status warning"><b>Payment submitted, verification needs attention.</b><br>'+escapeHtml(err.message)+'<br>Please save Payment ID: '+escapeHtml(response.razorpay_payment_id||'')+' and contact support if money was deducted.</div>';
+      }
+    },
+    modal:{ondismiss:function(){
+      const status=document.getElementById('payStatus');
+      if(status) status.innerHTML='<div class="status warning">Checkout close ho gaya. Payment complete nahi hui ho to RETRIEVE BOOKING se isi booking ka payment dobara try kar sakte ho.</div>';
+    }}
+  };
+  const checkout=new window.Razorpay(options);
+  checkout.on('payment.failed',function(response){
+    const d=response.error||{};
+    document.getElementById('payStatus').innerHTML='<div class="status error"><b>Payment failed</b><br>'+escapeHtml(d.description||'Payment complete nahi hui.')+'<br>Booking ID: '+escapeHtml(t.ticketId)+' — RETRIEVE BOOKING se retry kar sakte ho.</div>';
+  });
+  checkout.open();
 }
 
-function checkPaymentSubmitReady(){
-  const utr=document.getElementById('utrInput')?.value.trim()||'';
-  const file=document.getElementById('paymentScreenshot')?.files?.[0];
-  const btn=document.getElementById('utrBtn');
-  if(btn){btn.disabled=false;btn.style.opacity=(/^[A-Za-z0-9_-]{6,40}$/.test(utr)||!!file)?'1':'.55';}
-}
-async function submitUtr(){
-  if(!currentTicket)return;
-  const utr=document.getElementById('utrInput').value.trim();
-  const file=document.getElementById('paymentScreenshot')?.files?.[0];
-  const st=document.getElementById('utrStatus');
-  if(!/^[A-Za-z0-9_-]{6,40}$/.test(utr) && !file){st.textContent='UTR ya payment screenshot me se koi ek submit karo.';return;}
-  if(file.size>3*1024*1024){st.textContent='Screenshot 3 MB se chhota hona chahiye.';return;}
-  document.getElementById('utrBtn').disabled=true; st.textContent='Screenshot compress karke UTR submit ho raha hai...';
-  try{
-    const paymentScreenshot=file ? await compressPaymentScreenshot(file) : '';
-    const r=await fetch('/api/submit-utr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticketId:currentTicket.ticketId,mobile:currentTicket.mobile,utr,paymentScreenshot})});
-    const data=await r.json(); if(!r.ok)throw new Error(data.error||'Could not submit UTR.');
-    document.getElementById('payment').innerHTML='<div class="booking-success-banner"><div class="banner-icon">🎉</div><div class="banner-title">BOOKING ID CONFIRMED</div><div class="banner-sub">Your payment details have been submitted successfully.</div><div class="booking-label">YOUR BOOKING ID</div><div class="booking-number">'+escapeHtml(currentTicket.ticketId)+'</div><div class="banner-save">⚠️ PLEASE SAVE THIS BOOKING ID</div><div class="banner-note">Your ticket will be generated after payment verification. Please keep your Booking ID and registered mobile number safe to access your ticket.</div><div class="banner-shot">📌 Take a screenshot of this Booking ID for future ticket download.</div><button class="my-ticket-btn" onclick="openMyTicketFromBanner()">🎟️ MY TICKET</button></div>'; document.querySelector('.action[onclick="showPayment()"]').classList.add('hidden');
-    document.getElementById('utrInput').disabled=true;
-    document.getElementById('utrBtn').disabled=true;
-  }catch(e){document.getElementById('utrBtn').disabled=false;st.textContent=e.message;}
-}
 
 function formatDate(d){return d==='2026-10-17'?'17 October 2026':d}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -264,9 +273,15 @@ async function retrievePendingBooking(){
 }
 function renderPaymentForExistingBooking(t){
   const payment=document.getElementById('payment');
-  payment.innerHTML='<div class="status ok" style="background:#0b6b3a"><b>🔄 Pending Booking Found</b><br>Booking ID: <strong>'+escapeHtml(t.ticketId)+'</strong><br>Amount to Pay: <strong>₹'+Number(t.amountRupees)+'</strong></div><p style="text-align:center;font-weight:800">BharatPe QR scan karke exact amount pay karein.</p><div style="background:#fff;border-radius:14px;padding:12px;text-align:center"><img src="/api/payment-qr" alt="BharatPe QR" style="width:min(300px,100%);display:block;margin:auto"></div><div class="payment-requirement"><div class="payment-requirement-title">⚠️ PAYMENT VERIFICATION REQUIRED</div><div class="payment-requirement-text">UTR / Transaction ID <b>OR</b> successful payment screenshot — dono me se koi ek submit kar sakte hain.</div></div><input id="utrInput" placeholder="Enter UTR / Transaction ID (optional)" maxlength="40" oninput="checkPaymentSubmitReady()" style="color:#fff;background:#050816"><label style="margin-top:14px">Payment Screenshot <span style="opacity:.7">(Optional if UTR entered)</span></label><input id="paymentScreenshot" type="file" accept="image/jpeg,image/png,image/webp" onchange="checkPaymentSubmitReady()" style="padding:10px;background:#050816"><p class="note">UTR <b>ya</b> successful payment screenshot — dono me se koi ek zaroor submit karein.</p><button class="paid" id="utrBtn" onclick="submitUtr()" disabled>SUBMIT UTR & SCREENSHOT</button><p id="utrStatus" class="note"></p>';
+  payment.innerHTML='<div class="status ok" style="background:#0b6b3a"><b>🔄 Pending Booking Found</b><br>Booking ID: <strong>'+escapeHtml(t.ticketId)+'</strong><br>Amount to Pay: <strong>₹'+Number(t.amountRupees)+'</strong></div><p class="note">Complete your payment securely using Razorpay Checkout.</p><button class="action" type="button" id="resumeRazorpayBtn">PAY SECURELY WITH RAZORPAY</button><p id="resumePayStatus" class="note"></p>';
   payment.classList.remove('hidden');
+  document.getElementById('resumeRazorpayBtn').onclick=()=>{
+    if(!t.orderId){document.getElementById('resumePayStatus').textContent='Existing payment order not found. Please contact support so the booking can be checked.';return;}
+    launchRazorpayCheckout({keyId:window.RAZORPAY_KEY_ID||'',orderId:t.orderId,amountPaise:Math.round(Number(t.amountRupees)*100),amountRupees:Number(t.amountRupees),currency:'INR',ticket:t});
+  };
+  fetch('/api/payment-config').then(r=>r.json()).then(d=>{window.RAZORPAY_KEY_ID=d.keyId||'';}).catch(()=>{});
 }
+
 function openMyTicketFromBanner(){document.getElementById('lookupId').value=currentTicket?.ticketId||'';document.getElementById('lookupMobile').value=currentTicket?.mobile||'';openLookup()}
 async function lookupTicket(){
   const id=document.getElementById('lookupId').value.trim(),mobile=document.getElementById('lookupMobile').value.trim(),email=document.getElementById('lookupEmail').value.trim().toLowerCase(),box=document.getElementById('lookupStatus');
