@@ -1126,12 +1126,17 @@ app.post('/api/razorpay/verify-payment', async (req, res) => {
     if (!safeCompare(expected, signature)) {
       return res.status(400).json({ error: 'Payment signature verification failed.' });
     }
-    const payment = await razorpay.payments.fetch(paymentId);
+    let payment = await razorpay.payments.fetch(paymentId);
     if (String(payment.order_id || '') !== orderId ||
         Number(payment.amount) !== Math.round(Number(ticket.amountRupees) * 100) ||
-        String(payment.currency || '').toUpperCase() !== 'INR' ||
-        !['authorized', 'captured'].includes(String(payment.status || '').toLowerCase())) {
-      return res.status(400).json({ error: 'Payment is not valid for this booking or has not been authorized.' });
+        String(payment.currency || '').toUpperCase() !== 'INR') {
+      return res.status(400).json({ error: 'Payment details do not match this booking.' });
+    }
+    if (String(payment.status || '').toLowerCase() === 'authorized') {
+      payment = await razorpay.payments.capture(paymentId, Number(payment.amount), 'INR');
+    }
+    if (String(payment.status || '').toLowerCase() !== 'captured') {
+      return res.status(400).json({ error: 'Payment is not captured yet. Please wait or contact support if money was deducted.' });
     }
     if (ticket.paymentStatus !== 'VERIFIED') {
       const updated = await updateTicket(ticketId, {
