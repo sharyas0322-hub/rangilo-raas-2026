@@ -225,13 +225,13 @@ function launchRazorpayCheckout(paymentData){
     },
     modal:{ondismiss:function(){
       const status=document.getElementById('payStatus');
-      if(status) status.innerHTML='<div class="status warning">Checkout close ho gaya. Payment complete nahi hui ho to RETRIEVE BOOKING se isi booking ka payment dobara try kar sakte ho.</div>';
+      if(status) status.innerHTML='<div class="status warning">Checkout close ho gaya. Agar payment complete nahi hui, isi form se payment dobara try karo. Payment verify hone tak ticket create nahi hota.</div>';
     }}
   };
   const checkout=new window.Razorpay(options);
   checkout.on('payment.failed',function(response){
     const d=response.error||{};
-    document.getElementById('payStatus').innerHTML='<div class="status error"><b>Payment failed</b><br>'+escapeHtml(d.description||'Payment complete nahi hui.')+'<br>Booking ID: '+escapeHtml(t.ticketId)+' — RETRIEVE BOOKING se retry kar sakte ho.</div>';
+    document.getElementById('payStatus').innerHTML='<div class="status error"><b>Payment failed</b><br>'+escapeHtml(d.description||'Payment complete nahi hui.')+'<br>Booking abhi confirm nahi hui. Isi form se payment dobara try karo; ticket sirf verified payment ke baad banega.</div>';
   });
   checkout.open();
 }
