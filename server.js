@@ -733,6 +733,7 @@ app.get('/ganga-scanner/', (req,res)=>res.sendFile(path.join(SCANNER_DIR,'index.
 app.use('/admin', express.static(ADMIN_DIR));
 
 app.get('/api/config', (req, res) => res.json(publicConfig()));
+app.get('/api/payment-config', (req, res) => res.json({ enabled: RAZORPAY_ENABLED, keyId: RAZORPAY_ENABLED ? RAZORPAY_KEY_ID : null }));
 
 function isLoopbackRequest(req) {
   const ip = String(req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
@@ -1102,6 +1103,7 @@ app.post('/api/retrieve-booking', async (req, res) => {
     res.json({
       success: true,
       ticket: safeTicket,
+      keyId: RAZORPAY_ENABLED ? RAZORPAY_KEY_ID : null,
       resumePayment: ticket.paymentStatus !== 'VERIFIED' && ticket.status === 'PENDING_PAYMENT'
     });
   } catch (err) {
