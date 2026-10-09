@@ -19,8 +19,6 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const SCANNER_DIR = path.join(__dirname, 'scanner');
 const ADMIN_DIR = path.join(__dirname, 'admin');
 const TZ = 'Asia/Kolkata';
-const BHARATPE_QR_FILE = path.join(PUBLIC_DIR, 'bharatpe-qr.jpg');
-const BHARATPE_UPI_NAME = 'MOTI DEVI';
 const PROMO_CODES_FILE = path.join(DATA_DIR, 'promo-codes.json');
 
 const PRICES = {
@@ -1073,9 +1071,7 @@ app.post('/api/create-booking', async (req, res) => {
       promoCode: promo ? promo.code : null,
       people: ticket.people,
       eventId,
-      event: ticket.event,
-      upiName: BHARATPE_UPI_NAME,
-      qrUrl: '/api/payment-qr'
+      event: ticket.event
     });
   } catch (err) {
     console.error('create-booking error:', err);
