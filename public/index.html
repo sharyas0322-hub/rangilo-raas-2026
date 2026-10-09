@@ -275,11 +275,15 @@ function renderPaymentForExistingBooking(t){
   const payment=document.getElementById('payment');
   payment.innerHTML='<div class="status ok" style="background:#0b6b3a"><b>🔄 Pending Booking Found</b><br>Booking ID: <strong>'+escapeHtml(t.ticketId)+'</strong><br>Amount to Pay: <strong>₹'+Number(t.amountRupees)+'</strong></div><p class="note">Complete your payment securely using Razorpay Checkout.</p><button class="action" type="button" id="resumeRazorpayBtn">PAY SECURELY WITH RAZORPAY</button><p id="resumePayStatus" class="note"></p>';
   payment.classList.remove('hidden');
-  document.getElementById('resumeRazorpayBtn').onclick=()=>{
-    if(!t.orderId){document.getElementById('resumePayStatus').textContent='Existing payment order not found. Please contact support so the booking can be checked.';return;}
-    launchRazorpayCheckout({keyId:window.RAZORPAY_KEY_ID||'',orderId:t.orderId,amountPaise:Math.round(Number(t.amountRupees)*100),amountRupees:Number(t.amountRupees),currency:'INR',ticket:t});
+  document.getElementById('resumeRazorpayBtn').onclick=async()=>{
+    const st=document.getElementById('resumePayStatus');
+    if(!t.orderId){st.textContent='Existing payment order not found. Please contact support so the booking can be checked.';return;}
+    try{
+      const cr=await fetch('/api/payment-config');const cd=await cr.json();
+      if(!cr.ok||!cd.enabled||!cd.keyId)throw new Error('Razorpay live keys configured nahi hain. Support se contact karo.');
+      launchRazorpayCheckout({keyId:cd.keyId,orderId:t.orderId,amountPaise:Math.round(Number(t.amountRupees)*100),amountRupees:Number(t.amountRupees),currency:'INR',ticket:t});
+    }catch(e){st.textContent=e.message;}
   };
-  fetch('/api/payment-config').then(r=>r.json()).then(d=>{window.RAZORPAY_KEY_ID=d.keyId||'';}).catch(()=>{});
 }
 
 function openMyTicketFromBanner(){document.getElementById('lookupId').value=currentTicket?.ticketId||'';document.getElementById('lookupMobile').value=currentTicket?.mobile||'';openLookup()}
