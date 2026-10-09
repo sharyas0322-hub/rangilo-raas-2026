@@ -419,6 +419,35 @@ async function getTicketByEmail(email) {
   return normalizeTicket(Array.isArray(rows) ? rows[0] : null);
 }
 
+function isConfirmedPaidTicket(ticket) {
+  return Boolean(ticket && (
+    String(ticket.paymentStatus || ticket.payment_status || '').toUpperCase() === 'VERIFIED' ||
+    ['CONFIRMED', 'USED', 'ENTERED'].includes(String(ticket.status || '').toUpperCase())
+  ));
+}
+
+async function getConfirmedTicketByMobile(mobile, excludeTicketId = '') {
+  const clean = String(mobile || '').trim();
+  if (!clean) return null;
+  const tickets = await getAllTickets();
+  return tickets.find(t =>
+    String(t.mobile || '').trim() === clean &&
+    String(t.ticketId || '').toUpperCase() !== String(excludeTicketId || '').toUpperCase() &&
+    isConfirmedPaidTicket(t)
+  ) || null;
+}
+
+async function getConfirmedTicketByEmail(email, excludeTicketId = '') {
+  const clean = String(email || '').trim().toLowerCase();
+  if (!clean) return null;
+  const tickets = await getAllTickets();
+  return tickets.find(t =>
+    String(t.email || '').trim().toLowerCase() === clean &&
+    String(t.ticketId || '').toUpperCase() !== String(excludeTicketId || '').toUpperCase() &&
+    isConfirmedPaidTicket(t)
+  ) || null;
+}
+
 async function getTicketByMobileAndEmail(mobile, email) {
   const cleanMobile = String(mobile || '').trim();
   const cleanEmail = String(email || '').trim().toLowerCase();
@@ -981,17 +1010,67 @@ app.post('/api/create-booking', async (req, res) => {
       return res.status(400).json({ error: 'Please select a valid event date.' });
     }
 
-    const existingMobile = await getTicketByMobile(mobile);
-    if (existingMobile) {
+    const confirmedMobile = await getConfirmedTicketByMobile(mobile);
+    if (confirmedMobile) {
       return res.status(409).json({
-        error: `This mobile number is already registered for a booking. Please use the same mobile number to access your existing booking (Booking ID: ${existingMobile.ticketId}).`
+        error: 'This mobile number already has a confirmed paid ticket. Please use MY TICKET to access it.'
+      });
+    }
+    const confirmedEmail = await getConfirmedTicketByEmail(email);
+    if (confirmedEmail) {
+      return res.status(409).json({
+        error: 'This email address already has a confirmed paid ticket. Please use MY TICKET to access it.'
+      });
+    }
+
+    // Backward compatibility: let customers finish an older pending booking/order
+    // instead of creating a second order for the same registered contact.
+    const existingMobile = await getTicketByMobile(mobile);
+    if (existingMobile && !isConfirmedPaidTicket(existingMobile)) {
+      const sameContact = String(existingMobile.email || '').trim().toLowerCase() === email;
+      const sameSelection = cleanType(existingMobile.type) === type &&
+        Number(existingMobile.qty) === qty &&
+        String(existingMobile.eventDate || '') === eventDate &&
+        String(existingMobile.eventId || 'rangilo').toLowerCase() === eventId;
+      if (!sameContact || !sameSelection || !existingMobile.orderId ||
+          existingMobile.status !== 'PENDING_PAYMENT') {
+        return res.status(409).json({
+          error: 'A pending booking already exists for this mobile number. Use RETRIEVE BOOKING with the same mobile and email to continue it.'
+        });
+      }
+      const pendingOrder = await razorpay.orders.fetch(existingMobile.orderId);
+      if (String(pendingOrder.id || '') !== String(existingMobile.orderId) ||
+          Number(pendingOrder.amount) !== Math.round(Number(existingMobile.amountRupees) * 100) ||
+          String(pendingOrder.currency || '').toUpperCase() !== 'INR') {
+        return res.status(409).json({
+          error: 'Your previous payment order could not be resumed. Use RETRIEVE BOOKING or contact support.'
+        });
+      }
+      const safeExisting = { ...existingMobile };
+      delete safeExisting.signature;
+      return res.json({
+        success: true,
+        ticket: safeExisting,
+        keyId: RAZORPAY_KEY_ID,
+        orderId: pendingOrder.id,
+        currency: pendingOrder.currency,
+        amountPaise: pendingOrder.amount,
+        amountRupees: Number(existingMobile.amountRupees),
+        originalAmountRupees: Number(existingMobile.originalAmountRupees || existingMobile.amountRupees),
+        discountPercent: Number(existingMobile.discountPercent || 0),
+        discountAmountRupees: Number(existingMobile.discountAmountRupees || 0),
+        promoCode: existingMobile.promoCode || null,
+        people: Number(existingMobile.people),
+        eventId: existingMobile.eventId || 'rangilo',
+        event: existingMobile.event,
+        resumePayment: true
       });
     }
 
     const existingEmail = await getTicketByEmail(email);
-    if (existingEmail) {
+    if (existingEmail && !isConfirmedPaidTicket(existingEmail)) {
       return res.status(409).json({
-        error: `This email address is already registered for a booking. Please use a different email address or access your existing booking (Booking ID: ${existingEmail.ticketId}).`
+        error: 'A pending booking already exists for this email address. Use RETRIEVE BOOKING with the same mobile and email to continue it.'
       });
     }
 
@@ -1052,14 +1131,29 @@ app.post('/api/create-booking', async (req, res) => {
       amount: Math.round(amountRupees * 100),
       currency: 'INR',
       receipt: ticketId,
-      notes: { ticketId, eventId, passType: type }
+      notes: {
+        ticketId,
+        eventId,
+        type,
+        qty: String(qty),
+        name,
+        mobile,
+        email,
+        eventDate,
+        originalAmountRupees: String(originalAmountRupees),
+        discountPercent: String(discountPercent),
+        discountAmountRupees: String(discountAmountRupees),
+        promoCode: promo ? promo.code : 'NONE'
+      }
     });
+    // Booking/ticket rows are created only after payment is verified and captured.
+    // Trusted order notes preserve the server-calculated details for that step.
     ticket.orderId = order.id;
-    const saved = await insertTicket(ticket);
+    delete ticket.signature;
 
     res.json({
       success: true,
-      ticket: saved,
+      ticket,
       keyId: RAZORPAY_KEY_ID,
       orderId: order.id,
       currency: order.currency,
@@ -1118,42 +1212,176 @@ app.post('/api/razorpay/verify-payment', async (req, res) => {
     if (!ticketId || !orderId || !paymentId || !signature) {
       return res.status(400).json({ error: 'Missing payment verification details.' });
     }
-    const ticket = await getTicketById(ticketId);
-    if (!ticket || String(ticket.orderId || '') !== orderId) {
-      return res.status(404).json({ error: 'Booking/order mismatch.' });
-    }
-    const expected = crypto.createHmac('sha256', RAZORPAY_KEY_SECRET).update(orderId + '|' + paymentId).digest('hex');
+
+    const expected = crypto.createHmac('sha256', RAZORPAY_KEY_SECRET)
+      .update(orderId + '|' + paymentId).digest('hex');
     if (!safeCompare(expected, signature)) {
       return res.status(400).json({ error: 'Payment signature verification failed.' });
     }
+
+    const order = await razorpay.orders.fetch(orderId);
+    if (!order || String(order.id || '') !== orderId ||
+        String(order.currency || '').toUpperCase() !== 'INR') {
+      return res.status(400).json({ error: 'Razorpay order could not be verified.' });
+    }
+
+    let ticket = await getTicketById(ticketId);
+    let needsInsert = false;
+    if (ticket) {
+      if (String(ticket.orderId || '') !== orderId) {
+        return res.status(404).json({ error: 'Booking/order mismatch.' });
+      }
+    } else {
+      const notes = order.notes || {};
+      const noteTicketId = String(notes.ticketId || '').trim().toUpperCase();
+      const eventId = String(notes.eventId || 'rangilo').trim().toLowerCase();
+      const type = cleanType(notes.type);
+      const qty = Number(notes.qty);
+      const name = String(notes.name || '').trim();
+      const mobile = String(notes.mobile || '').trim();
+      const email = String(notes.email || '').trim().toLowerCase();
+      const eventDate = String(notes.eventDate || '').trim();
+      const originalAmountRupees = Number(notes.originalAmountRupees);
+      const discountPercent = Number(notes.discountPercent || 0);
+      const discountAmountRupees = Number(notes.discountAmountRupees || 0);
+      const amountRupees = Number(order.amount) / 100;
+      const promoCode = String(notes.promoCode || 'NONE').trim().toUpperCase();
+      const isGangaEvent = eventId === 'ganga-devi';
+
+      if (noteTicketId !== ticketId || !PRICES[type] ||
+          ![1, 2].includes(qty) || !name ||
+          !/^[6-9]\d{9}$/.test(mobile) ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+          !validEventDate(eventDate) ||
+          (isGangaEvent && (!['GD SOLO', 'GD 4 PEOPLE'].includes(type) || eventDate !== '2026-10-16')) ||
+          (!isGangaEvent && ['GD SOLO', 'GD 4 PEOPLE'].includes(type)) ||
+          !Number.isFinite(originalAmountRupees) ||
+          originalAmountRupees !== PRICES[type] * qty ||
+          !Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent >= 100 ||
+          !Number.isFinite(discountAmountRupees) || discountAmountRupees < 0 ||
+          Math.round((originalAmountRupees - discountAmountRupees) * 100) !== Math.round(Number(order.amount))) {
+        return res.status(400).json({ error: 'The booking details in this payment order are invalid.' });
+      }
+
+      ticket = {
+        ticketId,
+        bookingId: ticketId,
+        eventId,
+        event: isGangaEvent ? 'Rangilo Raas — Ganga Devi Dandiya Night' : 'Rangilo Raas 2026',
+        eventDate,
+        eventDates: isGangaEvent ? '16 October 2026' : '17 October 2026',
+        eventTime: isGangaEvent ? '1:00 PM – 6:00 PM' : '5:00 PM – 11:00 PM',
+        venueName: isGangaEvent ? 'Ganga Devi Mahila Mahavidyalaya' : readConfig().venueName,
+        venueAddress: isGangaEvent ? 'Patna, Bihar' : readConfig().venueAddress,
+        girlsOnly: isGangaEvent,
+        type,
+        qty,
+        people: getPeople(type, qty),
+        amountRupees,
+        originalAmountRupees,
+        discountPercent,
+        discountAmountRupees,
+        promoCode: promoCode === 'NONE' ? null : promoCode,
+        receivedAmountRupees: null,
+        name,
+        mobile,
+        email,
+        paymentId: null,
+        orderId,
+        utr: null,
+        paymentStatus: 'PENDING',
+        paymentSubmittedAt: null,
+        paymentVerifiedAt: null,
+        paymentRejectedAt: null,
+        paymentRejectionReason: null,
+        status: 'PENDING_PAYMENT',
+        used: false,
+        createdAt: isoNow(),
+        scannedAt: null,
+        scannedBy: null,
+        scanHistory: [],
+        signature: signTicket(ticketId)
+      };
+      needsInsert = true;
+    }
+
+    if (Math.round(Number(order.amount)) !== Math.round(Number(ticket.amountRupees) * 100) ||
+        Math.round(Number(order.amount)) <= 0) {
+      return res.status(400).json({ error: 'Order amount does not match this ticket.' });
+    }
+
     let payment = await razorpay.payments.fetch(paymentId);
     if (String(payment.order_id || '') !== orderId ||
         Number(payment.amount) !== Math.round(Number(ticket.amountRupees) * 100) ||
         String(payment.currency || '').toUpperCase() !== 'INR') {
       return res.status(400).json({ error: 'Payment details do not match this booking.' });
     }
+
+    if (ticket.paymentStatus === 'VERIFIED' && isConfirmedPaidTicket(ticket)) {
+      return res.json({ success: true, status: 'CONFIRMED', ticket });
+    }
+
+    // Check uniqueness before capture; cancelled/abandoned orders never create tickets.
+    const duplicateMobile = await getConfirmedTicketByMobile(ticket.mobile, ticket.ticketId);
+    const duplicateEmail = await getConfirmedTicketByEmail(ticket.email, ticket.ticketId);
+    if (duplicateMobile || duplicateEmail) {
+      if (String(payment.status || '').toLowerCase() === 'captured') {
+        try {
+          await razorpay.payments.refund(paymentId, {
+            amount: Number(payment.amount),
+            notes: { reason: 'duplicate_confirmed_ticket' }
+          });
+        } catch (refundErr) {
+          console.error('Duplicate-payment refund needs manual review:', refundErr);
+        }
+      }
+      return res.status(409).json({
+        error: 'This mobile number or email already has a confirmed ticket. If money was deducted, contact event support with Payment ID: ' + paymentId
+      });
+    }
+
     if (String(payment.status || '').toLowerCase() === 'authorized') {
       payment = await razorpay.payments.capture(paymentId, Number(payment.amount), 'INR');
     }
     if (String(payment.status || '').toLowerCase() !== 'captured') {
       return res.status(400).json({ error: 'Payment is not captured yet. Please wait or contact support if money was deducted.' });
     }
-    if (ticket.paymentStatus !== 'VERIFIED') {
-      const updated = await updateTicket(ticketId, {
-        paymentId,
-        orderId,
-        received_amount_rupees: Number(payment.amount) / 100,
-        payment_status: 'VERIFIED',
-        payment_verified_at: isoNow(),
-        payment_rejected_at: null,
-        payment_rejection_reason: null,
-        status: 'CONFIRMED',
-        used: false
-      });
-      await updatePromoStats(updated || ticket);
-      return res.json({ success: true, status: 'CONFIRMED', ticket: updated || ticket });
+
+    if (needsInsert) {
+      ticket.paymentId = paymentId;
+      ticket.orderId = orderId;
+      ticket.receivedAmountRupees = Number(payment.amount) / 100;
+      ticket.paymentStatus = 'VERIFIED';
+      ticket.paymentVerifiedAt = isoNow();
+      ticket.status = 'CONFIRMED';
+      ticket.used = false;
+      let saved;
+      try {
+        saved = await insertTicket(ticket);
+      } catch (insertErr) {
+        const raced = await getTicketById(ticketId);
+        if (raced && isConfirmedPaidTicket(raced) && String(raced.paymentId || '') === paymentId) {
+          return res.json({ success: true, status: 'CONFIRMED', ticket: raced });
+        }
+        throw insertErr;
+      }
+      await updatePromoStats(saved || ticket);
+      return res.json({ success: true, status: 'CONFIRMED', ticket: saved || ticket });
     }
-    return res.json({ success: true, status: 'CONFIRMED', ticket });
+
+    const updated = await updateTicket(ticketId, {
+      paymentId,
+      orderId,
+      received_amount_rupees: Number(payment.amount) / 100,
+      payment_status: 'VERIFIED',
+      payment_verified_at: isoNow(),
+      payment_rejected_at: null,
+      payment_rejection_reason: null,
+      status: 'CONFIRMED',
+      used: false
+    });
+    await updatePromoStats(updated || ticket);
+    return res.json({ success: true, status: 'CONFIRMED', ticket: updated || ticket });
   } catch (err) {
     console.error('Razorpay payment verification error:', err);
     res.status(500).json({ error: 'Could not verify Razorpay payment. If money was deducted, contact event support with your payment ID.' });
