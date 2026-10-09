@@ -5,6 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
 const QRCode = require('qrcode');
+const Razorpay = require('razorpay');
 const PDFDocument = require('pdfkit');
 
 const app = express();
@@ -66,6 +67,10 @@ if (!process.env.TICKET_SECRET || process.env.TICKET_SECRET.includes('Change_Thi
 const SUPABASE_URL = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SUPABASE_KEY = String(process.env.SUPABASE_SECRET_KEY || '').trim();
 const SUPABASE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_KEY);
+const RAZORPAY_KEY_ID = String(process.env.RAZORPAY_KEY_ID || '').trim();
+const RAZORPAY_KEY_SECRET = String(process.env.RAZORPAY_KEY_SECRET || '').trim();
+const RAZORPAY_ENABLED = Boolean(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET);
+const razorpay = RAZORPAY_ENABLED ? new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET }) : null;
 
 if (SUPABASE_ENABLED) {
   console.log('[DATABASE] Supabase persistence enabled.');
@@ -760,12 +765,7 @@ app.get('/api/local-test-scan-mode', (req, res) => {
   });
 });
 
-app.get('/api/payment-qr', (req, res) => {
-  if (!fs.existsSync(BHARATPE_QR_FILE)) {
-    return res.status(404).send('BharatPe QR not configured.');
-  }
-  res.sendFile(BHARATPE_QR_FILE);
-});
+app.get('/api/payment-qr', (req, res) => res.status(410).json({ error: 'Manual QR payments have been retired. Please use Razorpay Checkout.' }));
 
 app.get('/api/promo-code', async (req, res) => {
   try {
@@ -955,6 +955,7 @@ async function makeTicketPdfBuffer(ticket) {
 }
 app.post('/api/create-booking', async (req, res) => {
   try {
+    if (!RAZORPAY_ENABLED) return res.status(503).json({ error: 'Online payments are not configured yet. Please contact event support.' });
     const type = cleanType(req.body.type);
     const qty = Number(req.body.qty);
     const name = String(req.body.name || '').trim();
@@ -1048,11 +1049,22 @@ app.post('/api/create-booking', async (req, res) => {
       signature: signTicket(ticketId)
     };
 
+    const order = await razorpay.orders.create({
+      amount: Math.round(amountRupees * 100),
+      currency: 'INR',
+      receipt: ticketId,
+      notes: { ticketId, eventId, passType: type }
+    });
+    ticket.orderId = order.id;
     const saved = await insertTicket(ticket);
 
     res.json({
       success: true,
       ticket: saved,
+      keyId: RAZORPAY_KEY_ID,
+      orderId: order.id,
+      currency: order.currency,
+      amountPaise: order.amount,
       amountRupees,
       originalAmountRupees,
       discountPercent,
@@ -1098,53 +1110,54 @@ app.post('/api/retrieve-booking', async (req, res) => {
   }
 });
 
-app.post('/api/submit-utr', async (req, res) => {
+app.post('/api/razorpay/verify-payment', async (req, res) => {
   try {
+    if (!RAZORPAY_ENABLED) return res.status(503).json({ error: 'Razorpay is not configured.' });
     const ticketId = String(req.body.ticketId || '').trim().toUpperCase();
-    const mobile = String(req.body.mobile || '').trim();
-    const utr = String(req.body.utr || '').trim();
-    const paymentScreenshot = String(req.body.paymentScreenshot || '').trim();
-
-    if (!ticketId || !/^[6-9]\d{9}$/.test(mobile)) {
-      return res.status(400).json({ error: 'Booking ID and valid mobile are required.' });
+    const orderId = String(req.body.razorpay_order_id || '').trim();
+    const paymentId = String(req.body.razorpay_payment_id || '').trim();
+    const signature = String(req.body.razorpay_signature || '').trim();
+    if (!ticketId || !orderId || !paymentId || !signature) {
+      return res.status(400).json({ error: 'Missing payment verification details.' });
     }
-    const hasUtr = /^[A-Za-z0-9_-]{6,40}$/.test(utr);
-    const hasScreenshot = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(paymentScreenshot) && paymentScreenshot.length <= 1800000;
-    if (!hasUtr && !hasScreenshot) {
-      return res.status(400).json({ error: 'Submit either a valid UTR / transaction reference or a payment screenshot.' });
-    }
-
     const ticket = await getTicketById(ticketId);
-    if (!ticket || ticket.mobile !== mobile) {
-      return res.status(404).json({ error: 'Booking not found.' });
+    if (!ticket || String(ticket.orderId || '') !== orderId) {
+      return res.status(404).json({ error: 'Booking/order mismatch.' });
     }
-
-    if (ticket.paymentStatus === 'VERIFIED' && ticket.status === 'CONFIRMED') {
-      return res.json({ success: true, status: 'CONFIRMED', ticket });
+    const expected = crypto.createHmac('sha256', RAZORPAY_KEY_SECRET).update(orderId + '|' + paymentId).digest('hex');
+    if (!safeCompare(expected, signature)) {
+      return res.status(400).json({ error: 'Payment signature verification failed.' });
     }
-
-    const duplicate = hasUtr ? await getTicketByUtr(utr) : null;
-    if (duplicate && duplicate.ticketId !== ticketId) {
-      return res.status(409).json({ error: 'This UTR has already been submitted for another booking.' });
+    const payment = await razorpay.payments.fetch(paymentId);
+    if (String(payment.order_id || '') !== orderId ||
+        Number(payment.amount) !== Math.round(Number(ticket.amountRupees) * 100) ||
+        String(payment.currency || '').toUpperCase() !== 'INR' ||
+        !['authorized', 'captured'].includes(String(payment.status || '').toLowerCase())) {
+      return res.status(400).json({ error: 'Payment is not valid for this booking or has not been authorized.' });
     }
-
-    const updated = await updateTicket(ticketId, {
-      utr,
-      payment_status: 'PENDING',
-      payment_submitted_at: isoNow(),
-      payment_verified_at: null,
-      payment_rejected_at: null,
-      payment_rejection_reason: null,
-      payment_screenshot: paymentScreenshot,
-      status: 'PENDING_PAYMENT'
-    });
-
-    res.json({ success: true, status: 'PENDING', ticket: updated });
+    if (ticket.paymentStatus !== 'VERIFIED') {
+      const updated = await updateTicket(ticketId, {
+        paymentId,
+        orderId,
+        received_amount_rupees: Number(payment.amount) / 100,
+        payment_status: 'VERIFIED',
+        payment_verified_at: isoNow(),
+        payment_rejected_at: null,
+        payment_rejection_reason: null,
+        status: 'CONFIRMED',
+        used: false
+      });
+      await updatePromoStats(updated || ticket);
+      return res.json({ success: true, status: 'CONFIRMED', ticket: updated || ticket });
+    }
+    return res.json({ success: true, status: 'CONFIRMED', ticket });
   } catch (err) {
-    console.error('submit-utr error:', err);
-    res.status(500).json({ error: 'Could not submit UTR.' });
+    console.error('Razorpay payment verification error:', err);
+    res.status(500).json({ error: 'Could not verify Razorpay payment. If money was deducted, contact event support with your payment ID.' });
   }
 });
+
+app.post('/api/submit-utr', (req, res) => res.status(410).json({ error: 'Manual QR/UTR payments are disabled. Please use Razorpay Checkout.' }));
 
 app.get('/api/admin/payment-screenshot/:ticketId', requireAdmin, async (req, res) => {
   try {
