@@ -216,8 +216,9 @@ function launchRazorpayCheckout(paymentData){
         currentTicket=vd.ticket||t;
         currentTicket.paymentStatus='VERIFIED';
         currentTicket.status='CONFIRMED';
-        document.getElementById('payment').innerHTML='<div class="booking-success-banner"><div class="banner-icon">🎉</div><div class="banner-title">PAYMENT SUCCESSFUL</div><div class="banner-sub">Razorpay payment verified successfully.</div><div class="booking-label">YOUR BOOKING ID</div><div class="booking-number">'+escapeHtml(currentTicket.ticketId)+'</div><div class="banner-save">✅ SAVE YOUR BOOKING ID</div><div class="banner-note">Your ticket QR is ready. Use your registered mobile number and Booking ID in MY TICKET.</div><button class="my-ticket-btn" onclick="openMyTicketFromBanner()">🎟️ VIEW MY TICKET</button></div>';
+        document.getElementById('payment').classList.remove('show');
         document.querySelector('.action[onclick="showPayment()"]')?.classList.add('hidden');
+        showTicket(currentTicket, null, {});
       }catch(err){
         status.innerHTML='<div class="status warning"><b>Payment submitted, verification needs attention.</b><br>'+escapeHtml(err.message)+'<br>Please save Payment ID: '+escapeHtml(response.razorpay_payment_id||'')+' and contact support if money was deducted.</div>';
       }
