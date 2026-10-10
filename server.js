@@ -34,8 +34,8 @@ const DEFAULT_CONFIG = {
   eventName: 'Rangilo Raas 2026',
   eventDates: ['2026-10-17'],
   eventTime: '5:00 PM – 11:00 PM',
-  venueName: 'Aashirvadd Banquet Hall',
-  venueAddress: 'Near Gai Ghat, Patna, Bihar',
+  venueName: 'Awadh Green Banquet Hall',
+  venueAddress: 'Gai Ghat, Patna, Bihar',
   venueMapsUrl: 'https://maps.app.goo.gl/sHiKSQ9gZz1KkJwbA',
   ticketReleaseDate: '2026-10-13',
   ticketReleaseTime: '00:00',
@@ -95,8 +95,8 @@ function readConfig() {
   return {
     ...DEFAULT_CONFIG,
     ...readJson(CONFIG_FILE, {}),
-    venueName: 'Aashirvadd Banquet Hall',
-    venueAddress: 'Near Gai Ghat, Patna, Bihar',
+    venueName: 'Awadh Green Banquet Hall',
+    venueAddress: 'Gai Ghat, Patna, Bihar',
     venueMapsUrl: 'https://maps.app.goo.gl/sHiKSQ9gZz1KkJwbA',
     instantTicketRelease: true,
     releaseOverride: true
@@ -920,9 +920,9 @@ async function makeTicketPdfBuffer(ticket) {
       doc.fillColor(muted).font('Helvetica').fontSize(8)
         .text('VENUE', 330, cardY + 190);
       doc.fillColor(dark).font('Helvetica-Bold').fontSize(10)
-        .text('Aashirvadd Banquet Hall', 330, cardY + 202, { width: 190 });
+        .text('Awadh Green Banquet Hall', 330, cardY + 202, { width: 190 });
       doc.fillColor(muted).font('Helvetica').fontSize(8)
-        .text('Near Gai Ghat, Patna, Bihar', 330, cardY + 217, { width: 190 });
+        .text('Gai Ghat, Patna, Bihar', 330, cardY + 217, { width: 190 });
 
       // Gate row
       doc.fillColor(muted).font('Helvetica').fontSize(8).text('ENTRY GATE', leftX, cardY + 263);
